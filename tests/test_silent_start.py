@@ -128,8 +128,9 @@ def test_silent_run_sends_start_when_checkin_needed(data_home, monkeypatch):
     assert called == [3]                       # 正常路径发送一次开始通知
 
 
-def test_silent_run_skips_start_when_today_all_done(data_home, monkeypatch):
-    """今日已全部成功签到 → 早退，不发开始消息也不签到。"""
+def test_silent_run_sends_start_even_when_today_all_done(data_home,
+                                                          monkeypatch):
+    """今日已全部成功签到 → 仍先发一条开始消息（到点必有回音），但不签到。"""
     called = []
     monkeypatch.setattr(silent, "list_accounts", lambda: list(ACCOUNTS))
     monkeypatch.setattr(silent, "_send_periodic_reports", lambda: None)
@@ -145,4 +146,4 @@ def test_silent_run_skips_start_when_today_all_done(data_home, monkeypatch):
 
     rc = silent.silent_run()
     assert rc == 0
-    assert called == []
+    assert called == [1]

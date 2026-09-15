@@ -1402,7 +1402,7 @@ def run_gui() -> int:
 
     # ── 消息推送交互（多渠道） ──
 
-    # 已保存的明文凭据缓存：输入框留空保存时保留原值（凭据不回显）
+    # 已保存的明文凭据缓存：输入框直接回显已保存凭据，留空保存时保留原值
     saved_creds: dict[str, dict] = {}
 
     def load_notify_settings():
@@ -1416,15 +1416,15 @@ def run_gui() -> int:
         enabled = set(s.get("channels") or [])
         for ch in PUSH_CHANNELS:
             ch_enable_vars[ch].set(1 if ch in enabled else 0)
-            # 安全考虑不回显明文；留空保存即沿用已保存凭据
-            ch_key_vars[ch].set("")
-            ch_secret_vars[ch].set("")
+            # 直接回显已保存凭据（密文仅存本机、绑定当前 Windows 用户，
+            # 明文只在 GUI 输入框中显示）；留空保存仍沿用原凭据
+            ch_key_vars[ch].set(saved_creds[ch].get("key", ""))
+            ch_secret_vars[ch].set(saved_creds[ch].get("secret", ""))
         configured = [PUSH_CHANNEL_LABELS[ch] for ch in PUSH_CHANNELS
                       if saved_creds.get(ch, {}).get("key")]
         if configured:
-            push_state_var.set("已配置凭据（本机加密保存，界面不回显）："
-                               + "、".join(configured)
-                               + "。输入框留空保存可保留原凭据。")
+            push_state_var.set("已配置凭据：" + "、".join(configured)
+                               + "（输入框中即为当前生效的凭据，可直接修改后保存）。")
         else:
             push_state_var.set("尚未配置任何推送凭据。")
         return s
@@ -1452,8 +1452,9 @@ def run_gui() -> int:
         for ch in PUSH_CHANNELS:
             saved_creds[ch] = dict(s.get("creds", {}).get(ch)
                                    or {"key": "", "secret": ""})
-            ch_key_vars[ch].set("")
-            ch_secret_vars[ch].set("")
+            # 保存后输入框同步显示实际生效的凭据（含留空沿用的原值）
+            ch_key_vars[ch].set(saved_creds[ch].get("key", ""))
+            ch_secret_vars[ch].set(saved_creds[ch].get("secret", ""))
 
     def on_save_push():
         s = _collect_settings()

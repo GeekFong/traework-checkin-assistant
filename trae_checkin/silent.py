@@ -328,13 +328,14 @@ def check_and_push_offline_alerts(settings: Optional[dict] = None) -> int:
 
 
 def _push_checkin_start(accounts: list[dict]) -> None:
-    """定时任务确认要执行签到时推送一条「开始签到」通知。
+    """定时任务触发时推送一条「开始签到」通知（早退判断之前调用）。
 
     每日到点与关机错过后的开机/登录补签共用同一静默入口，两种场景
-    都会发送。当天最多一条（用 period_markers 的 start_日期 键去重，
-    同一天多个触发器不会重复打扰）；TRAESIGN_FORCE=1 可绕过去重便于
-    排查。属于独立消息，不受「仅失败时推送」开关影响；推送失败或
-    任何异常都不影响签到主流程。
+    都会发送；即使随后因"今日已全部签到"直接退出，也会先发这一条，
+    保证到点必有回音。当天最多一条（用 period_markers 的 start_日期
+    键去重，同一天多个触发器不会重复打扰）；TRAESIGN_FORCE=1 可绕过
+    去重便于排查。属于独立消息，不受「仅失败时推送」开关影响；推送
+    失败或任何异常都不影响签到主流程。
     """
     try:
         settings = load_settings()
@@ -423,6 +424,10 @@ def silent_run() -> int:
         log.warning(f"周期报告流程异常：{e}")
 
     accounts = list_accounts()
+    # 定时任务一旦触发就先推送「开始签到」通知（每日至多一条，由内部去重），
+    # 放在早退判断之前：无论随后是正常签到还是"今日已全部签到"直接结束，
+    # 用户到点都能收到一条消息，确认定时任务确实运行了。
+    _push_checkin_start(accounts)
     # 今日已全部成功签到则立即退出：每日定时任务通常先跑，开机/登录触发器
     # 当天可能再次触发，早退可避免重复请求和重复推送。
     # 设置环境变量 TRAESIGN_FORCE=1 可强制重跑（排查用）。
@@ -437,9 +442,6 @@ def silent_run() -> int:
                 return 0
         except Exception as e:
             log.warning(f"今日签到状态判断失败，按正常流程执行：{e}")
-    # 任务确认需要执行签到：先推送「开始签到」通知（到点与开机补签统一
-    # 覆盖，每日至多一条），让用户第一时间知道定时任务已经运行起来。
-    _push_checkin_start(accounts)
     # 随机抖动 0~5 分钟，避免每天固定整点请求（可通过环境变量关闭，便于测试）
     if os.environ.get("TRAESIGN_NO_JITTER") != "1":
         jitter = random.randint(0, 300)

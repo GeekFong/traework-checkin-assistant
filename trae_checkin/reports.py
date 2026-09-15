@@ -90,14 +90,15 @@ def build_checkin_start_report(accounts: list[dict]) -> tuple[str, str]:
     """定时任务触发时生成「开始签到」通知的 (标题, Markdown 正文)。
 
     每日到点与关机错过后的开机/登录补签共用同一静默入口，
-    因此本消息统一覆盖两种场景，不区分触发来源。
+    因此本消息统一覆盖两种场景，不区分触发来源；即使今日
+    已全部签到（本次不会重复签到），到点也发一条报平安。
     """
     now = datetime.now()
     enabled = [a for a in accounts if a.get("enabled", True)]
     n = len(enabled)
-    title = (f"🔔 定时签到任务已启动（{n} 个账号） "
+    title = (f"🔔 定时签到任务已触发（{n} 个账号） "
              f"{now.strftime('%m-%d %H:%M')}")
-    lines = ["**定时签到任务已触发，即将开始签到。**", ""]
+    lines = ["**定时签到任务已触发，正在核对今日签到状态。**", ""]
     for a in enabled:
         label = PLATFORM_LABELS.get(
             a.get("platform", PLAT_TRAEWORK), a.get("platform", ""))
@@ -106,10 +107,11 @@ def build_checkin_start_report(accounts: list[dict]) -> tuple[str, str]:
         lines.append(f"- [{label}] {user}")
     lines += [
         "",
-        "同时会检测桌面客户端登录态，为未保存快照的账号自动补签。",
+        "未签到的账号将立即开始签到（含桌面客户端登录态自动补签）。",
         "",
         "> 若设定时间点本机处于关机状态，本条消息来自开机后的自动补签。",
-        "> 全部签到完成后，将再推送一条当日签到结果日报。",
+        "> 若今日已全部签到，本次直接结束、不再重复签到；",
+        "> 实际执行签到后，将再推送一条当日签到结果日报。",
         "",
         f"触发时间：{now.strftime('%Y-%m-%d %H:%M:%S')}",
     ]
