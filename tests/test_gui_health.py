@@ -5,7 +5,7 @@
 后台线程回灌时机不确定，用 200ms 轮询状态机驱动；网络为真实 TCP 探测，
 TRAESIGN_HEALTH_TIMEOUT 压到 0.1 秒保证用例快速结束（连通与否不影响断言）。
 首轮打桩 health 模块的客户端探测（已安装）与计划任务（未开启），
-重检时打桩 gui.app.run_health_checks 返回 2 条异常。
+重检时打桩 gui.dialogs.run_health_checks 返回 2 条异常。
 """
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ def test_health_dialog(data_home, monkeypatch):
                              "status": health.HEALTH_ERROR,
                              "detail": "已损坏", "hint": "恢复备份"},
                         ]
-                        monkeypatch.setattr(gui.app, "run_health_checks",
+                        monkeypatch.setattr(gui.dialogs, "run_health_checks",
                                             lambda: fake)
                         find_button(win, "重新检查").invoke()
                         state["phase"] = 3

@@ -89,14 +89,21 @@ def test_save_theme_when_no_file(data_home):
 
 
 def test_gui_palette_source_consistency():
-    """run_gui 内部色板通过函数源码自检（不启动 Tk）。"""
-    src = (package_root() / "gui" / "app.py").read_text(encoding="utf-8")
-    assert '"light": {' in src
-    assert '"dark": {' in src
+    """色板定义在 gui/theme.py，换肤接线在 gui/app.py，分别源码自检（不启动 Tk）。"""
+    gui_dir = package_root() / "gui"
+    tsrc = (gui_dir / "theme.py").read_text(encoding="utf-8")
+    assert '"light": {' in tsrc
+    assert '"dark": {' in tsrc
+    # 合并 gui 包源码检查：每个色板 token 至少深浅两版定义 + 一处使用
+    all_src = "".join(
+        (gui_dir / f).read_text(encoding="utf-8")
+        for f in ("app.py", "theme.py", "dialogs.py", "widgets.py")
+    )
     for token in ('"bg"', '"card"', '"primary"', '"entry_bg"',
                   '"heat_none"', '"tip_bg"', '"seg"'):
-        assert src.count(token) >= 3, token
-    assert "_initial_theme = load_settings()" in src
+        assert all_src.count(token) >= 3, token
+    src = (gui_dir / "app.py").read_text(encoding="utf-8")
+    assert "_initial_theme = initial_theme_name()" in src
     assert "def apply_theme" in src
     assert "save_theme_preference(name)" in src
     assert "command=toggle_theme" in src

@@ -45,11 +45,13 @@
 
 ## 截图
 
-> 可将界面截图放入 `docs/images/` 并在此引用，例如：
->
-> ```markdown
-> ![主界面](docs/images/main.png)
-> ```
+主界面：环境状态、签到结果、多账号管理与自动签到设置。
+
+<img src="docs/images/main.png" alt="主界面" width="460"/>
+
+签到历史与统计：连续天数、成功率、90 天热力日历与积分趋势。
+
+<img src="docs/images/history.png" alt="签到历史与统计" width="460"/>
 
 ## 环境要求
 
@@ -62,7 +64,7 @@
 
 ### 方式一：直接使用发布版（推荐普通用户）
 
-1. 到 [Releases](../../releases) 下载最新的 `TraeWorkCheckin.exe`（绿色单文件）或安装包。
+1. 到仓库的 Releases 页面下载最新的 `TraeWorkCheckin.exe`（绿色单文件）或安装包。
 2. 双击运行。若出现“Windows 已保护你的电脑”，点击“更多信息 → 仍要运行”（程序未购买收费数字代码签名）。
 3. 窗口顶部选择平台，状态显示“已登录”后点击“立即签到”。
 4. 在“每日自动签到”区域设置时间并开启，之后每天自动后台签到。
@@ -140,7 +142,11 @@ traework-checkin-assistant/
 │   ├── silent.py              # 静默任务：重试、幂等、掉线预警、周期报告
 │   ├── single_instance.py     # 单实例互斥锁
 │   ├── gui/
-│   │   └── app.py             # Tkinter 图形界面
+│   │   ├── app.py             # 主窗口装配与运行入口
+│   │   ├── theme.py           # 深浅色板与整树换色
+│   │   ├── dialogs.py         # 关于 / 声明 / 健康自检 / 推送历史 / 迁移弹窗
+│   │   ├── widgets.py         # 卡片等通用控件
+│   │   └── state.py           # 弹窗共享上下文 GuiContext
 │   └── platforms/
 │       ├── traework.py        # TraeWork CN 接口适配
 │       └── workbuddy.py       # WorkBuddy 凭证读取与接口适配
@@ -151,10 +157,11 @@ traework-checkin-assistant/
 ├── scripts/
 │   ├── build_exe.ps1          # PyInstaller 一键打包
 │   └── build_installer.ps1    # 调用 ISCC 生成安装包
-├── tests/                     # pytest 测试
+├── tests/                     # pytest 测试（含无头 GUI 测试）
 ├── docs/
-│   └── usage.md               # 详细使用说明
-├── legacy/                    # 历史单文件版本归档（不参与运行）
+│   ├── usage.md               # 详细使用说明
+│   └── images/                # README 截图
+├── TraeCheckin.spec           # PyInstaller 打包配置
 ├── pyproject.toml
 ├── LICENSE
 └── README.md

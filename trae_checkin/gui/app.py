@@ -6,19 +6,18 @@
 
 from __future__ import annotations
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 import os
 import sys
 import threading
-from typing import Any, Optional
+from typing import Optional
 from ..accounts import delete_account, list_accounts, save_current_account, set_account_enabled, set_account_note
 from ..backup import backup_user_data, export_diagnostic_bundle, restore_user_data
-from ..constants import APP_COPYRIGHT, APP_NAME, PLATFORM_LABELS, PLAT_TRAEWORK, PLAT_WORKBUDDY
+from ..constants import APP_NAME, PLATFORM_LABELS, PLAT_TRAEWORK, PLAT_WORKBUDDY
 from ..crashhandlers import clear_crash_dumps, install_exception_hooks, install_tk_error_handler, list_crash_dumps
-from ..health import HEALTH_ERROR, HEALTH_OK, HEALTH_WARN, run_health_checks
 from ..history import TREND_MAX_LINES, account_status_lookup, export_history_csv, history_calendar, history_credit_trend, history_identity, history_monthly_stats, history_recent_rows, history_summary, load_history, record_checkin_history
 from ..launcher import find_install_exes, find_wb_install_exes, get_app_data_dir, launch_app, launch_platform_app
-from ..push import clear_push_history, load_push_history, push_wechat
+from ..push import push_wechat
 from ..reports import _is_relogin_failure, build_checkin_report
 from ..runtime import APP_VERSION, LOG_FILE, _log_dir, _run, log, resource_path
 from ..scheduler import create_scheduled_task, delete_scheduled_task, task_exists
@@ -26,65 +25,35 @@ from ..service import run_batch_checkin
 from ..settings import PUSH_CHANNELS, PUSH_CHANNEL_LABELS, SETTINGS_VERSION, accept_disclaimer, load_settings, save_settings_dict, save_theme_preference
 from ..platforms.traework import is_logged_in, run_checkin
 from ..platforms.workbuddy import run_wb_checkin_live, wb_find_auth_file, wb_is_logged_in
+from .dialogs import (
+    show_about,
+    show_disclaimer_dialog as open_disclaimer_dialog,
+    show_health,
+    show_migration,
+    show_push_history,
+)
+from .state import GuiContext
+from .theme import (
+    FONT,
+    HEAT_FAIL,
+    HEAT_OK,
+    HEAT_PARTIAL,
+    PALETTES,
+    STATUS_AMBER,
+    STATUS_RED,
+    ThemeManager,
+    initial_theme_name,
+)
+from .widgets import make_card
 
 
 def run_gui() -> int:
     import tkinter as tk
     from tkinter import ttk, messagebox, filedialog, simpledialog
 
-    FONT = "Microsoft YaHei UI"
-    # ── 主题色板：所有界面颜色统一走语义 token，深色模式整树重配 ──
-    PALETTES = {
-        "light": {
-            "bg": "#f4f6fb", "card": "#ffffff", "primary": "#2f6bff",
-            "primary_d": "#1f56e0", "green": "#1a9e5c", "gray": "#6b7280",
-            "dark": "#1f2937", "border": "#e3e8f0", "seg": "#dfe5f0",
-            "seg_active": "#cfd7ea", "row": "#f7f9fd", "btn_gray": "#eef1f7",
-            "btn_gray_a": "#dde3ee", "hint": "#b6bdca", "footer": "#9aa3b2",
-            "csv_bg": "#eef3ff", "csv_bg_a": "#dde7ff", "blue_txt": "#2f6bff",
-            "info_bg": "#e8f4ff", "info_bg_a": "#d2e9ff", "info_txt": "#1172b8",
-            "diag_bg": "#f3f0ff", "diag_bg_a": "#e6e0ff", "diag_txt": "#6d4aff",
-            "warn_bg": "#fff4e5", "warn_bg_a": "#ffe7c2", "warn_txt": "#c7771f",
-            "del_bg": "#fdecec", "del_bg_a": "#f9d6d6", "del_txt": "#c0392b",
-            "note_bg": "#eef3fb", "note_txt": "#2c5fa8",
-            "ok_bg": "#eafaf1", "ok_bg_a": "#d4f2e0",
-            "entry_bg": "#ffffff", "entry_fg": "#1f2937",
-            "grid": "#e9edf5", "axis": "#c7cedb", "heat_none": "#eef1f6",
-            "tip_bg": "#1f2937", "tip_fg": "#ffffff",
-        },
-        "dark": {
-            "bg": "#15181f", "card": "#1e232c", "primary": "#5b8cff",
-            "primary_d": "#3f6fe0", "green": "#34c47a", "gray": "#9aa4b2",
-            "dark": "#e6eaf0", "border": "#333a47", "seg": "#2a303b",
-            "seg_active": "#3a4354", "row": "#262c37", "btn_gray": "#2c333f",
-            "btn_gray_a": "#39424f", "hint": "#6b7482", "footer": "#7c8594",
-            "csv_bg": "#22304a", "csv_bg_a": "#2d3f60", "blue_txt": "#8ab0ff",
-            "info_bg": "#1f3145", "info_bg_a": "#2a415c", "info_txt": "#6fb6ef",
-            "diag_bg": "#2e2a45", "diag_bg_a": "#3b3558", "diag_txt": "#a994ff",
-            "warn_bg": "#3d2f17", "warn_bg_a": "#4e3c1d", "warn_txt": "#e0a53d",
-            "del_bg": "#40242a", "del_bg_a": "#522e35", "del_txt": "#f08a8a",
-            "note_bg": "#243247", "note_txt": "#8ab0dd",
-            "ok_bg": "#1d3a2a", "ok_bg_a": "#264b36",
-            "entry_bg": "#232a35", "entry_fg": "#e6eaf0",
-            "grid": "#2c333f", "axis": "#46505f", "heat_none": "#2a303b",
-            "tip_bg": "#e6eaf0", "tip_fg": "#15181f",
-        },
-    }
-    # 语义状态色（两种主题下都醒目，不参与重映射）
-    STATUS_RED, STATUS_AMBER = "#e0533d", "#e0a53d"
-    HEAT_OK, HEAT_PARTIAL, HEAT_FAIL = "#22c55e", "#f59e0b", "#ef4444"
-    _initial_theme = "light"
-    try:
-        _initial_theme = load_settings().get("theme", "light")
-        if _initial_theme not in PALETTES:
-            _initial_theme = "light"
-    except Exception:
-        pass
+    _initial_theme = initial_theme_name()
     P = dict(PALETTES[_initial_theme])
     current_theme = {"name": _initial_theme}
-
-    def _pal():
-        return P
 
     BG = P["bg"]
     CARD = P["card"]
@@ -121,126 +90,36 @@ def run_gui() -> int:
     except Exception:
         pass
 
-    # 浅色 hex → 语义 token 映射（递归换色用）
-    _HEX_TO_TOKEN = {
-        "#f4f6fb": "bg", "#ffffff": "card", "#2f6bff": "primary",
-        "#1f56e0": "primary_d", "#1a9e5c": "green", "#6b7280": "gray",
-        "#1f2937": "dark", "#e3e8f0": "border", "#dfe5f0": "seg",
-        "#cfd7ea": "seg_active", "#f7f9fd": "row", "#eef1f7": "btn_gray",
-        "#dde3ee": "btn_gray_a", "#b6bdca": "hint", "#9aa3b2": "footer",
-        "#eef3ff": "csv_bg", "#dde7ff": "csv_bg_a",
-        "#e8f4ff": "info_bg", "#d2e9ff": "info_bg_a", "#1172b8": "info_txt",
-        "#f3f0ff": "diag_bg", "#e6e0ff": "diag_bg_a", "#6d4aff": "diag_txt",
-        "#fff4e5": "warn_bg", "#ffe7c2": "warn_bg_a", "#c7771f": "warn_txt",
-        "#fdecec": "del_bg", "#f9d6d6": "del_bg_a", "#c0392b": "del_txt",
-        "#eef3fb": "note_bg", "#2c5fa8": "note_txt",
-        "#eafaf1": "ok_bg", "#d4f2e0": "ok_bg_a",
-        "#e9edf5": "grid", "#c7cedb": "axis", "#eef1f6": "heat_none",
-        "#15804c": "green",  # 绿色按钮按下色
-    }
-    # 深色 hex → token（用于二次切换：先把深色 hex 也认出来）
-    _HEX_TO_TOKEN.update({v: k for k, v in PALETTES["dark"].items()})
+    theme = ThemeManager(root, style, _initial_theme)
+    ctx = GuiContext(
+        tk=tk,
+        ttk=ttk,
+        messagebox=messagebox,
+        filedialog=filedialog,
+        simpledialog=simpledialog,
+        root=root,
+        style=style,
+        theme=theme,
+    )
 
-    def _mapped_color(hexv: str):
-        if not isinstance(hexv, str):
-            return hexv
-        key = hexv.lower()
-        if key in _HEX_TO_TOKEN:
-            return P[_HEX_TO_TOKEN[key]]
-        return hexv  # 状态色（红/琥珀/热力色等）保持不变
-
-    def _config_widget(w):
-        cls = w.winfo_class()
-        try:
-            if cls in ("Frame", "Toplevel", "Canvas"):
-                if "bg" in w.keys() and str(w.cget("bg")).lower() in _HEX_TO_TOKEN:
-                    w.configure(bg=_mapped_color(w.cget("bg")))
-                if cls == "Frame" and "highlightbackground" in w.keys():
-                    hb = str(w.cget("highlightbackground")).lower()
-                    if hb in _HEX_TO_TOKEN:
-                        w.configure(highlightbackground=_mapped_color(hb))
-            elif cls in ("Label", "Button"):
-                kw = {}
-                bgv = str(w.cget("bg")).lower()
-                if bgv in _HEX_TO_TOKEN:
-                    kw["bg"] = _mapped_color(bgv)
-                fgv = str(w.cget("fg")).lower()
-                if fgv in _HEX_TO_TOKEN:
-                    kw["fg"] = _mapped_color(fgv)
-                if "activebackground" in w.keys():
-                    ab = str(w.cget("activebackground")).lower()
-                    if ab in _HEX_TO_TOKEN:
-                        kw["activebackground"] = _mapped_color(ab)
-                if "activeforeground" in w.keys():
-                    af = str(w.cget("activeforeground")).lower()
-                    if af in _HEX_TO_TOKEN:
-                        kw["activeforeground"] = _mapped_color(af)
-                if "selectcolor" in w.keys():
-                    sc = str(w.cget("selectcolor")).lower()
-                    if sc in _HEX_TO_TOKEN:
-                        kw["selectcolor"] = _mapped_color(sc)
-                if kw:
-                    w.configure(**kw)
-            elif cls == "Entry":
-                w.configure(bg=P["entry_bg"], fg=P["entry_fg"],
-                            insertbackground=P["entry_fg"],
-                            highlightbackground=P["border"])
-            elif cls in ("Checkbutton", "Radiobutton"):
-                kw = {}
-                bgv = str(w.cget("bg")).lower()
-                if bgv in _HEX_TO_TOKEN:
-                    kw["bg"] = _mapped_color(bgv)
-                fgv = str(w.cget("fg")).lower()
-                if fgv in _HEX_TO_TOKEN:
-                    kw["fg"] = _mapped_color(fgv)
-                sc = str(w.cget("selectcolor")).lower()
-                if sc in _HEX_TO_TOKEN:
-                    kw["selectcolor"] = _mapped_color(sc)
-                if "activebackground" in w.keys():
-                    ab = str(w.cget("activebackground")).lower()
-                    if ab in _HEX_TO_TOKEN:
-                        kw["activebackground"] = _mapped_color(ab)
-                if kw:
-                    w.configure(**kw)
-        except Exception:
-            pass
+    def _sync_theme_colors() -> None:
+        nonlocal BG, CARD, PRIMARY, PRIMARY_D, GREEN, GRAY, DARK
+        P.update(theme.palette)
+        colors = theme.colors
+        BG, CARD = colors["BG"], colors["CARD"]
+        PRIMARY, PRIMARY_D = colors["PRIMARY"], colors["PRIMARY_D"]
+        GREEN, GRAY, DARK = colors["GREEN"], colors["GRAY"], colors["DARK"]
+        current_theme["name"] = theme.name
 
     def apply_theme(name: str, persist: bool = True):
-        """整树换色并重绘历史区；name ∈ {'light','dark'}。"""
-        nonlocal BG, CARD, PRIMARY, PRIMARY_D, GREEN, GRAY, DARK
-        if name not in PALETTES:
-            name = "light"
-        P.update(PALETTES[name])
-        BG, CARD = P["bg"], P["card"]
-        PRIMARY, PRIMARY_D = P["primary"], P["primary_d"]
-        GREEN, GRAY, DARK = P["green"], P["gray"], P["dark"]
-        current_theme["name"] = name
-        root.configure(bg=BG)
-        try:
-            style.configure("Vertical.TScrollbar",
-                            background=P["seg"], troughcolor=P["bg"])
-        except Exception:
-            pass
-        _walk_and_theme(root)
-        # 动态内容区重绘（热力图/趋势图/账号行/统计条都含一次性画色）
-        try:
-            render_accounts()
-        except Exception:
-            pass
-        try:
-            render_history()
-        except Exception:
-            pass
+        """整树换色；动态区域在渲染函数定义后通过回调重绘。"""
+        theme.apply(name, persist=False)
+        _sync_theme_colors()
         if persist:
             save_theme_preference(name)
 
-    def _walk_and_theme(win):
-        _config_widget(win)
-        for ch in win.winfo_children():
-            _walk_and_theme(ch)
-
     def toggle_theme():
-        apply_theme("dark" if current_theme["name"] == "light" else "light")
+        apply_theme(theme.toggle())
         try:
             theme_btn.config(
                 text="☀ 浅色" if current_theme["name"] == "dark" else "🌙 深色")
@@ -248,305 +127,44 @@ def run_gui() -> int:
             pass
 
     def card(parent) -> tk.Frame:
-        f = tk.Frame(parent, bg=CARD, highlightbackground=P["border"],
-                     highlightthickness=1, bd=0)
-        return f
+        return make_card(ctx, parent)
 
     def on_show_about():
-        from tkinter import messagebox
-        win = tk.Toplevel(root)
-        win.title("关于本工具")
-        win.configure(bg=BG)
-        win.resizable(False, False)
-        win.transient(root)
-        win.grab_set()
-        box = tk.Frame(win, bg=CARD, highlightbackground=P["border"],
-                       highlightthickness=1, bd=0)
-        box.pack(padx=20, pady=20, fill="both", expand=True)
-        tk.Label(box, text=APP_NAME, bg=CARD, fg=DARK,
-                 font=(FONT, 15, "bold")).pack(anchor="w", padx=20,
-                                                pady=(18, 2))
-        tk.Label(box, text=f"版本 v{APP_VERSION}", bg=CARD, fg=PRIMARY,
-                 font=(FONT, 10, "bold")).pack(anchor="w", padx=20)
-        for line in (
-            "支持平台：TraeWork CN / 腾讯 WorkBuddy",
-            "功能：多账号批量签到 · 推送通知 · 历史统计 · 自动任务",
-            "",
-            "数据与隐私：",
-            f"· 所有账号、密钥、历史仅保存在本机：{_log_dir()}",
-            "· 凭据使用 Windows DPAPI 加密，不上传任何第三方服务器",
-            "· 本工具不收集、不上传任何个人信息",
-            "",
-            "免责声明：本工具为个人学习用途的免费开源工具，",
-            "自动化签到可能违反对应平台的服务条款，使用风险",
-            "（包括但不限于账号受限）由使用者自行承担。",
-            "",
-            APP_COPYRIGHT,
-        ):
-            tk.Label(box, text=line or " ", bg=CARD,
-                     fg=(GRAY if line.startswith(("·", "支持", "功能"))
-                         else DARK),
-                     font=(FONT, 9), justify="left", anchor="w",
-                     wraplength=460).pack(anchor="w", padx=20)
-        row = tk.Frame(box, bg=CARD)
-        row.pack(fill="x", padx=20, pady=(14, 18))
-
-        def _open_data_dir():
-            try:
-                os.startfile(str(_log_dir()))  # type: ignore[attr-defined]
-            except Exception as e:
-                messagebox.showerror("打开失败", f"无法打开数据目录：{e}",
-                                     parent=win)
-
-        tk.Button(row, text="打开数据目录", bg=P["seg"], fg=DARK,
-                  font=(FONT, 9), relief="flat", cursor="hand2", bd=0,
-                  activebackground=P["seg_active"], padx=12, pady=5,
-                  command=_open_data_dir).pack(side="left")
-        tk.Button(row, text="知道了", bg=PRIMARY, fg="white",
-                  font=(FONT, 9, "bold"), relief="flat", cursor="hand2",
-                  bd=0, activebackground=PRIMARY_D, activeforeground="white",
-                  padx=18, pady=5, command=win.destroy).pack(side="right")
-        win.update_idletasks()
-        win.geometry(f"+{root.winfo_rootx() + 80}"
-                     f"+{root.winfo_rooty() + 80}")
-        win.wait_window()
+        show_about(ctx)
 
     def show_disclaimer_dialog() -> bool:
         """首次启动风险声明弹窗：返回用户是否同意（同意才能进入主界面）。"""
-        win = tk.Toplevel(root)
-        win.title("首次使用 · 风险与隐私声明")
-        win.configure(bg=BG)
-        win.resizable(False, False)
-        win.transient(root)
-        win.grab_set()
-        state = {"agree": None}
-
-        def _close():
-            if state["agree"] is None:
-                state["agree"] = False
-            win.destroy()
-
-        win.protocol("WM_DELETE_WINDOW", _close)
-        box = tk.Frame(win, bg=CARD, highlightbackground=P["border"],
-                       highlightthickness=1, bd=0)
-        box.pack(padx=18, pady=18)
-        tk.Label(box, text="欢迎使用每日签到助手", bg=CARD, fg=DARK,
-                 font=(FONT, 14, "bold")).pack(anchor="w", padx=22, pady=(18, 4))
-        tk.Label(box, text=f"版本 v{APP_VERSION} · {APP_COPYRIGHT}",
-                 bg=CARD, fg=GRAY, font=(FONT, 9)).pack(anchor="w", padx=22)
-        lines = (
-            "",
-            "使用前请知悉并确认：",
-            "1. 本工具为个人学习用途的免费开源工具，与 TraeWork、",
-            "    腾讯 WorkBuddy 官方无关；自动化签到可能违反对应平台",
-            "    的服务条款，账号受限等风险由使用者自行承担。",
-            "2. 本工具直接调用平台官方接口完成签到，不经过任何第三方",
-            "    服务器；账号凭据使用 Windows DPAPI 加密，仅保存在本机。",
-            f"3. 数据目录：{_log_dir()}",
-            "    卸载程序不会删除该目录，换电脑可用内置备份 / 换机向导迁移。",
-            "4. 建议合理使用（每日一次即可），不要高频请求。",
-        )
-        for line in lines:
-            tk.Label(box, text=line or " ", bg=CARD,
-                     fg=(DARK if line and line[0].isdigit() else GRAY),
-                     font=(FONT, 9), justify="left", anchor="w",
-                     wraplength=470).pack(anchor="w", padx=22)
-        row = tk.Frame(box, bg=CARD)
-        row.pack(fill="x", padx=22, pady=(16, 18))
-
-        def _agree():
-            state["agree"] = True
-            win.destroy()
-
-        def _disagree():
-            state["agree"] = False
-            win.destroy()
-
-        tk.Button(row, text="不同意并退出", bg=P["seg"], fg=DARK,
-                  font=(FONT, 9), relief="flat", bd=0, cursor="hand2",
-                  activebackground=P["seg_active"], padx=12, pady=6,
-                  command=_disagree).pack(side="left")
-        tk.Button(row, text="我已了解并同意", bg=PRIMARY, fg="white",
-                  font=(FONT, 9, "bold"), relief="flat", bd=0, cursor="hand2",
-                  activebackground=PRIMARY_D, activeforeground="white",
-                  padx=16, pady=6, command=_agree).pack(side="right")
-        win.update_idletasks()
-        win.geometry(f"{max(win.winfo_reqwidth(), 520)}x{win.winfo_reqheight()}"
-                     f"+{root.winfo_rootx() + 40}+{root.winfo_rooty() + 60}")
-        win.wait_window()
-        return state["agree"] is True
-
-    # ── 健康自检中心 ──
-    HEALTH_META = {
-        HEALTH_OK: ("✓", GREEN, "正常"),
-        HEALTH_WARN: ("⚠", "#c98a12", "需关注"),
-        HEALTH_ERROR: ("✗", "#d33b3b", "异常"),
-    }
+        return open_disclaimer_dialog(ctx)
 
     def on_show_health():
-        win = tk.Toplevel(root)
-        win.title("健康自检")
-        win.configure(bg=BG)
-        win.transient(root)
-        win.geometry("560x520")
-        win.minsize(520, 460)
-        head = tk.Frame(win, bg=BG)
-        head.pack(fill="x", padx=18, pady=(16, 4))
-        tk.Label(head, text="健康自检", bg=BG, fg=DARK,
-                 font=(FONT, 14, "bold")).pack(side="left")
-        summary_var = tk.StringVar(value="正在检查…")
-        tk.Label(head, textvariable=summary_var, bg=BG, fg=GRAY,
-                 font=(FONT, 9)).pack(side="right")
+        show_health(ctx)
 
-        canvas_wrap = tk.Frame(win, bg=BG)
-        canvas_wrap.pack(fill="both", expand=True, padx=18, pady=(6, 6))
-        canvas = tk.Canvas(canvas_wrap, bg=BG, highlightthickness=0, bd=0)
-        vsb = ttk.Scrollbar(canvas_wrap, orient="vertical",
-                            command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        list_frame = tk.Frame(canvas, bg=BG)
-        canvas_window = canvas.create_window((0, 0), window=list_frame,
-                                             anchor="nw")
-
-        def _on_configure(_e=None):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-            canvas.itemconfigure(canvas_window, width=canvas.winfo_width())
-
-        list_frame.bind("<Configure>", _on_configure)
-        canvas.bind("<Configure>", _on_configure)
-
-        # 滚轮绑定跟随鼠标进出 canvas，窗口销毁后不再残留全局回调，
-        # 避免 "invalid command name" 类 TclError（参见历史崩溃记录）
-        def _on_wheel(e):
-            try:
-                canvas.yview_scroll(int(-e.delta / 120), "units")
-            except tk.TclError:
-                pass
-
-        canvas.bind("<Enter>",
-                    lambda _e: canvas.bind_all("<MouseWheel>", _on_wheel))
-        canvas.bind("<Leave>",
-                    lambda _e: canvas.unbind_all("<MouseWheel>"))
-        win.bind("<Destroy>",
-                 lambda _e: canvas.unbind_all("<MouseWheel>"), add="+")
-
-        foot = tk.Frame(win, bg=BG)
-        foot.pack(fill="x", padx=18, pady=(0, 14))
-        rerun_btn = tk.Button(foot, text="重新检查", bg=PRIMARY, fg="white",
-                              font=(FONT, 9, "bold"), relief="flat", bd=0,
-                              activebackground=PRIMARY_D, activeforeground="white",
-                              cursor="hand2", padx=16, pady=6)
-        rerun_btn.pack(side="right")
-        tk.Button(foot, text="关闭", bg=P["seg"], fg=DARK,
-                  font=(FONT, 9), relief="flat", bd=0, cursor="hand2",
-                  activebackground=P["seg_active"], padx=14, pady=6,
-                  command=win.destroy).pack(side="right", padx=(0, 8))
-
-        def _clear_children(parent):
-            for child in parent.winfo_children():
-                child.destroy()
-
-        def _render(results):
-            _clear_children(list_frame)
-            counts = {HEALTH_OK: 0, HEALTH_WARN: 0, HEALTH_ERROR: 0}
-            for item in results:
-                counts[item["status"]] = counts.get(item["status"], 0) + 1
-                icon, color, _label = HEALTH_META[item["status"]]
-                cardf = tk.Frame(list_frame, bg=CARD,
-                                 highlightbackground=P["border"],
-                                 highlightthickness=1, bd=0)
-                cardf.pack(fill="x", pady=(0, 8))
-                top_row = tk.Frame(cardf, bg=CARD)
-                top_row.pack(fill="x", padx=12, pady=(10, 0))
-                tk.Label(top_row, text=icon, bg=CARD, fg=color,
-                         font=(FONT, 12, "bold"), width=2).pack(side="left")
-                tk.Label(top_row, text=item["title"], bg=CARD, fg=DARK,
-                         font=(FONT, 10, "bold")).pack(side="left")
-                tk.Label(top_row, text=HEALTH_META[item["status"]][2],
-                         bg=CARD, fg=color,
-                         font=(FONT, 8, "bold")).pack(side="right")
-                tk.Label(cardf, text=item["detail"], bg=CARD, fg=GRAY,
-                         font=(FONT, 8), justify="left", anchor="w",
-                         wraplength=480).pack(anchor="w", padx=(38, 12))
-                if item.get("hint"):
-                    tk.Label(cardf, text="建议：" + item["hint"], bg=CARD,
-                             fg=color, font=(FONT, 8), justify="left",
-                             anchor="w", wraplength=480).pack(
-                        anchor="w", padx=(38, 12), pady=(2, 10))
-                else:
-                    tk.Frame(cardf, bg=CARD, height=8).pack()
-            if counts[HEALTH_ERROR]:
-                summary_var.set(
-                    f"{counts[HEALTH_ERROR]} 项异常 · "
-                    f"{counts[HEALTH_WARN]} 项需关注 · "
-                    f"{counts[HEALTH_OK]} 项正常")
-            elif counts[HEALTH_WARN]:
-                summary_var.set(
-                    f"{counts[HEALTH_WARN]} 项需关注 · "
-                    f"{counts[HEALTH_OK]} 项正常")
-            else:
-                summary_var.set(f"全部 {counts[HEALTH_OK]} 项正常")
-
-        state = {"running": False}
-
-        def _run():
-            if state["running"]:
-                return
-            state["running"] = True
-            rerun_btn.config(state="disabled", text="检查中…")
-            summary_var.set("正在检查客户端、网络与任务…")
-            _clear_children(list_frame)
-            tk.Label(list_frame, text="检测大约需要几秒，请稍候…",
-                     bg=BG, fg=GRAY, font=(FONT, 9)).pack(pady=30)
-
-            def worker():
-                try:
-                    results = run_health_checks()
-                except Exception as e:
-                    results = [{"key": "fatal", "title": "健康自检",
-                                "status": HEALTH_ERROR,
-                                "detail": f"自检流程异常：{e}", "hint": ""}]
-
-                def done():
-                    if not win.winfo_exists():
-                        return
-                    _render(results)
-                    rerun_btn.config(state="normal", text="重新检查")
-                    state["running"] = False
-                root.after(0, done)
-
-            threading.Thread(target=worker, daemon=True).start()
-
-        rerun_btn.config(command=_run)
-        win.protocol("WM_DELETE_WINDOW", win.destroy)
-        win.update_idletasks()
-        win.geometry(f"+{root.winfo_rootx() + 100}"
-                     f"+{root.winfo_rooty() + 60}")
-        _run()
-
-    # 顶部标题
-    header = tk.Frame(root, bg=BG)
-    header.pack(fill="x", padx=24, pady=(22, 6))
+    # 顶部：第一行放功能按钮，第二行独占放标题与副标题。
+    # 若把长副标题与右侧按钮放在同一行，Label 会被挤压、内部居中导致
+    # 文字左右两端被裁切，因此这里刻意拆成两行。
+    toolbar = tk.Frame(root, bg=BG)
+    toolbar.pack(fill="x", padx=24, pady=(22, 0))
     theme_btn = tk.Button(
-        header, text="☀ 浅色" if _initial_theme == "dark" else "🌙 深色",
+        toolbar, text="☀ 浅色" if _initial_theme == "dark" else "🌙 深色",
         command=toggle_theme, bg=CARD, fg=DARK, relief="flat", bd=0,
         activebackground=P["seg"], activeforeground=DARK,
         font=(FONT, 10), padx=10, pady=4, cursor="hand2")
     theme_btn.pack(side="right", anchor="e")
     about_btn = tk.Button(
-        header, text="关于", command=on_show_about, bg=CARD, fg=DARK,
+        toolbar, text="关于", command=on_show_about, bg=CARD, fg=DARK,
         relief="flat", bd=0, activebackground=P["seg"],
         activeforeground=DARK, font=(FONT, 10), padx=10, pady=4,
         cursor="hand2")
     about_btn.pack(side="right", anchor="e", padx=(0, 6))
     health_btn = tk.Button(
-        header, text="健康自检", command=on_show_health, bg=CARD, fg=DARK,
+        toolbar, text="健康自检", command=on_show_health, bg=CARD, fg=DARK,
         relief="flat", bd=0, activebackground=P["seg"],
         activeforeground=DARK, font=(FONT, 10), padx=10, pady=4,
         cursor="hand2")
     health_btn.pack(side="right", anchor="e", padx=(0, 6))
+
+    header = tk.Frame(root, bg=BG)
+    header.pack(fill="x", padx=24, pady=(8, 6))
     tk.Label(header, text=APP_NAME, bg=BG, fg=DARK,
              font=(FONT, 19, "bold")).pack(anchor="w")
     tk.Label(header, text="TraeWork CN / 腾讯 WorkBuddy · 多账号批量签到 · 推送微信 · 开机补签",
@@ -911,72 +529,7 @@ def run_gui() -> int:
             messagebox.showerror(APP_NAME, f"诊断包导出失败：{e}")
 
     def on_show_push_history():
-        """推送历史弹窗：只显示标题/类型/渠道/结果/时间，不显示正文。"""
-        win = tk.Toplevel(root)
-        win.title("消息推送历史")
-        win.configure(bg=BG)
-        win.transient(root)
-        win.geometry("560x480")
-        win.minsize(480, 360)
-        try:
-            win.grab_set()
-        except Exception:
-            pass
-        tk.Label(win, text="消息推送历史（仅记录标题、渠道与结果，不含正文与密钥）",
-                 bg=BG, fg=GRAY, font=(FONT, 9), anchor="w"
-                 ).pack(fill="x", padx=14, pady=(12, 6))
-        box = tk.Frame(win, bg=CARD)
-        box.pack(fill="both", expand=True, padx=14, pady=(0, 8))
-        inner = tk.Frame(box, bg=CARD)
-        inner.pack(fill="both", expand=True)
-        items = load_push_history(limit=200)
-        if not items:
-            tk.Label(inner, text="暂无推送记录。\n开启推送后，测试消息与每日签到结果都会记录在这里。",
-                     bg=CARD, fg=GRAY, font=(FONT, 10), justify="left"
-                     ).pack(anchor="w", padx=14, pady=14)
-        else:
-            for it in items:
-                row = tk.Frame(inner, bg=CARD)
-                row.pack(fill="x", padx=10, pady=3)
-                ok_col = GREEN if it.get("ok") else STATUS_RED
-                tk.Label(row, text="✓" if it.get("ok") else "✗",
-                         bg=CARD, fg=ok_col, font=(FONT, 10, "bold"),
-                         width=2).pack(side="left")
-                meta = (f"{it.get('ts', '')}　[{it.get('kind') or '其他'}]"
-                        f"　{'、'.join(it.get('channels') or []) or '—'}")
-                tk.Label(row, text=meta, bg=CARD, fg=GRAY,
-                         font=(FONT, 8), anchor="w").pack(fill="x")
-                title = str(it.get("title") or "")
-                if len(title) > 60:
-                    title = title[:59] + "…"
-                tk.Label(row, text=title, bg=CARD, fg=DARK,
-                         font=(FONT, 9), anchor="w").pack(fill="x")
-                detail = str(it.get("detail") or "")
-                if detail:
-                    if len(detail) > 90:
-                        detail = detail[:89] + "…"
-                    tk.Label(row, text=detail, bg=CARD, fg=GRAY,
-                             font=(FONT, 8), anchor="w", wraplength=500,
-                             justify="left").pack(fill="x")
-
-        def on_clear():
-            if not messagebox.askyesno(
-                    APP_NAME, "确定清空全部推送历史吗？此操作不可撤销。",
-                    parent=win):
-                return
-            clear_push_history()
-            win.destroy()
-
-        foot = tk.Frame(win, bg=BG)
-        foot.pack(fill="x", padx=14, pady=(0, 12))
-        tk.Button(foot, text="清空历史", bg=P["del_bg"], fg=P["del_txt"],
-                  font=(FONT, 9), relief="flat", cursor="hand2",
-                  activebackground=P["del_bg_a"], padx=10, pady=3, bd=0,
-                  command=on_clear).pack(side="left")
-        tk.Button(foot, text="关闭", bg=P["btn_gray"], fg=DARK,
-                  font=(FONT, 9), relief="flat", cursor="hand2",
-                  activebackground=P["btn_gray_a"], padx=14, pady=3, bd=0,
-                  command=win.destroy).pack(side="right")
+        show_push_history(ctx)
 
     push_hist_btn = tk.Button(hist_head, text="推送记录", bg="#e8f4ff",
                               fg="#1172b8", font=(FONT, 9), relief="flat",
@@ -1002,202 +555,11 @@ def run_gui() -> int:
     backup_btn.pack(side="right", padx=(0, 6))
 
     def on_show_migration():
-        """换机迁移向导：4 步引导，内嵌备份/恢复入口与 DPAPI 风险提示。"""
-        win = tk.Toplevel(root)
-        win.title("换机迁移向导")
-        win.configure(bg=BG)
-        win.transient(root)
-        win.geometry("600x520")
-        win.minsize(540, 460)
-        try:
-            win.grab_set()
-        except Exception:
-            pass
+        def _refresh_after_restore():
+            render_accounts()
+            render_history()
 
-        head = tk.Frame(win, bg=BG)
-        head.pack(fill="x", padx=18, pady=(16, 4))
-        title_var = tk.StringVar()
-        tk.Label(head, textvariable=title_var, bg=BG, fg=DARK,
-                 font=(FONT, 13, "bold"), anchor="w").pack(anchor="w")
-        step_var = tk.StringVar()
-        tk.Label(head, textvariable=step_var, bg=BG, fg=GRAY,
-                 font=(FONT, 9), anchor="w").pack(anchor="w", pady=(2, 0))
-
-        content = tk.Frame(win, bg=BG)
-        content.pack(fill="both", expand=True, padx=18, pady=8)
-
-        nav = tk.Frame(win, bg=BG)
-        nav.pack(fill="x", padx=18, pady=(0, 14))
-        prev_btn = tk.Button(nav, text="上一步", bg=P["btn_gray"], fg=DARK,
-                             font=(FONT, 9), relief="flat", cursor="hand2",
-                             activebackground=P["btn_gray_a"],
-                             padx=14, pady=4, bd=0)
-        prev_btn.pack(side="left")
-        next_btn = tk.Button(nav, text="下一步", bg=PRIMARY, fg="white",
-                             font=(FONT, 9, "bold"), relief="flat", cursor="hand2",
-                             activebackground=PRIMARY_D, activeforeground="white",
-                             padx=18, pady=4, bd=0)
-        next_btn.pack(side="right")
-        close_btn = tk.Button(nav, text="关闭", bg=P["btn_gray"], fg=DARK,
-                              font=(FONT, 9), relief="flat", cursor="hand2",
-                              activebackground=P["btn_gray_a"],
-                              padx=14, pady=4, bd=0, command=win.destroy)
-        close_btn.pack(side="right", padx=(0, 8))
-
-        state = {"step": 0, "backup_path": ""}
-
-        def _para(parent, text, color=None, bold=False):
-            tk.Label(parent, text=text, bg=BG, fg=color or DARK,
-                     font=(FONT, 10, "bold" if bold else "normal"),
-                     justify="left", anchor="w", wraplength=540
-                     ).pack(anchor="w", pady=3)
-
-        def _warn_box(parent, text):
-            box = tk.Frame(parent, bg=P["warn_bg"], highlightthickness=0)
-            box.pack(fill="x", pady=8)
-            tk.Label(box, text=text, bg=P["warn_bg"], fg=P["warn_txt"],
-                     font=(FONT, 9, "bold"), justify="left", anchor="w",
-                     wraplength=512, padx=12, pady=10).pack(anchor="w")
-
-        def _ok_box(parent, text):
-            box = tk.Frame(parent, bg=P["ok_bg"], highlightthickness=0)
-            box.pack(fill="x", pady=8)
-            tk.Label(box, text=text, bg=P["ok_bg"], fg=GREEN,
-                     font=(FONT, 9), justify="left", anchor="w",
-                     wraplength=512, padx=12, pady=10).pack(anchor="w")
-
-        def _do_backup_in_wizard():
-            try:
-                default_name = f"签到助手备份_{datetime.now().strftime('%Y%m%d')}.zip"
-                path = filedialog.asksaveasfilename(
-                    parent=win, title="把备份保存到 U 盘 / 网盘 / 非系统盘",
-                    initialdir=str(Path.home() / "Desktop"),
-                    initialfile=default_name, defaultextension=".zip",
-                    filetypes=[("备份压缩包", "*.zip")])
-                if not path:
-                    return
-                info = backup_user_data(path)
-                state["backup_path"] = path
-                n = sum(1 for v in info.values() if v)
-                _ok_box(content, f"已生成备份（含 {n} 类数据）：\n{path}\n"
-                                 "请确认该文件已放到 U 盘或网盘，可在新电脑访问。")
-            except Exception as e:
-                messagebox.showerror(APP_NAME, f"备份失败：{e}", parent=win)
-
-        def _do_restore_in_wizard():
-            try:
-                path = filedialog.askopenfilename(
-                    parent=win, title="选择从旧电脑带来的备份压缩包",
-                    filetypes=[("备份压缩包", "*.zip"), ("所有文件", "*.*")])
-                if not path:
-                    return
-                res = restore_user_data(path)
-                state["restored"] = "、".join(res["restored"])
-                _ok_box(content, f"已恢复：{state['restored']}\n"
-                                 "设置即时生效，建议关闭后重新打开本工具。")
-                render_accounts()
-                render_history()
-            except Exception as e:
-                messagebox.showerror(APP_NAME, f"恢复失败：{e}", parent=win)
-
-        STEPS = [
-            {
-                "title": "第 1 步（旧电脑）：确认账号可手动登录",
-                "sub": "迁移前最重要的准备",
-                "render": lambda: (
-                    _warn_box(content, "重要：账号与推送凭据经 Windows DPAPI 加密，"
-                                      "绑定旧电脑的当前用户，恢复到新电脑后需重新登录验证，"
-                                      "无法直接解密使用。"),
-                    _para(content, "请在旧电脑上逐一确认："),
-                    _para(content, "1. TraeWork CN、腾讯 WorkBuddy 客户端均可正常打开并已登录；"),
-                    _para(content, "2. 你记得各账号的登录方式（手机号 / 邮箱 / 扫码）；"),
-                    _para(content, "3. Server酱 / PushPlus / 企业微信 / 钉钉 的推送密钥可在对应平台重新获取。"),
-                    _para(content, "建议先在旧电脑完成一次手动签到，确认账号状态正常后再继续。",
-                          color=GRAY),
-                ),
-            },
-            {
-                "title": "第 2 步（旧电脑）：备份并拷出数据",
-                "sub": "一键打包账号、设置、历史与推送记录",
-                "render": lambda: (
-                    _para(content, "点击下方按钮生成备份压缩包，并保存到 U 盘、移动硬盘"
-                                  "或网盘（不要只放在旧电脑桌面）："),
-                    tk.Button(content, text="① 生成备份包（另存为…）",
-                              bg=P["ok_bg"], fg=GREEN, font=(FONT, 10, "bold"),
-                              relief="flat", cursor="hand2",
-                              activebackground=P["ok_bg_a"],
-                              padx=14, pady=6, bd=0,
-                              command=_do_backup_in_wizard).pack(anchor="w", pady=6),
-                    _para(content, "备份包含：accounts.json、settings.json、"
-                                  "checkin_history.json、push_history.json。", color=GRAY),
-                    _warn_box(content, "再次提醒：凭据密文随备份带走，但只能在"
-                                      "「同一台电脑同一用户」下解密；换机后必须重新登录。"),
-                ),
-            },
-            {
-                "title": "第 3 步（新电脑）：安装并恢复",
-                "sub": "在新电脑完成安装后恢复数据",
-                "render": lambda: (
-                    _para(content, "在新电脑上："),
-                    _para(content, "1. 安装 TraeWork CN 与腾讯 WorkBuddy 客户端；"),
-                    _para(content, "2. 把本工具（exe 或源码）放到新电脑，先启动一次；"),
-                    _para(content, "3. 把备份压缩包拷到新电脑本地磁盘（U 盘内也可直接选）；"),
-                    _para(content, "4. 点击下方按钮选择备份包恢复（当前同名文件会自动另存"
-                                  "为 .restore-bak）："),
-                    tk.Button(content, text="② 选择备份包并恢复",
-                              bg=P["note_bg"], fg=P["note_txt"],
-                              font=(FONT, 10, "bold"), relief="flat", cursor="hand2",
-                              padx=14, pady=6, bd=0,
-                              command=_do_restore_in_wizard).pack(anchor="w", pady=6),
-                ),
-            },
-            {
-                "title": "第 4 步（新电脑）：逐账号重新登录确认",
-                "sub": "完成迁移的最后一步",
-                "render": lambda: (
-                    _para(content, "恢复后请逐个账号完成："),
-                    _para(content, "1. 在客户端登录对应账号，点「重登」按钮可一键唤起引导；"),
-                    _para(content, "2. 登录后在本工具点「保存当前账号」刷新凭据快照；"),
-                    _para(content, "3. 在「推送设置」中重新填写各渠道密钥并发一条测试推送；"),
-                    _para(content, "4. 确认「开机自动签到」计划任务时间（换机后需重新开启）；"),
-                    _para(content, "5. 手动执行一次「全部账号签到」验证全流程。"),
-                    _ok_box(content, "签到历史与推送记录会原样保留；新凭据写入后，"
-                                    "自动签到与微信推送即恢复正常。"),
-                ),
-            },
-        ]
-
-        def render_step():
-            for w in content.winfo_children():
-                w.destroy()
-            st = STEPS[state["step"]]
-            title_var.set(st["title"])
-            step_var.set(f"步骤 {state['step'] + 1} / {len(STEPS)}")
-            st["render"]()
-            prev_btn.config(state=("disabled" if state["step"] == 0 else "normal"))
-            next_btn.config(text=("完成" if state["step"] == len(STEPS) - 1 else "下一步"))
-
-        def go_next():
-            if state["step"] == len(STEPS) - 1:
-                win.destroy()
-                return
-            if state["step"] == 1 and not state.get("backup_path"):
-                if not messagebox.askyesno(
-                        "确认跳过备份", "尚未在本向导中生成备份包。\n"
-                                      "如果你已在「备份」按钮中自行备份，请选「是」继续；"
-                                      "否则建议选「否」先生成备份。", parent=win):
-                    return
-            state["step"] += 1
-            render_step()
-
-        def go_prev():
-            if state["step"] > 0:
-                state["step"] -= 1
-                render_step()
-
-        prev_btn.config(command=go_prev)
-        next_btn.config(command=go_next)
-        render_step()
+        show_migration(ctx, on_data_changed=_refresh_after_restore)
 
     migrate_btn = tk.Button(hist_head, text="换机迁移", bg=P["note_bg"],
                             fg=P["note_txt"], font=(FONT, 9), relief="flat",
@@ -1924,6 +1286,21 @@ def run_gui() -> int:
                 tag = f"{mark} {nm}"
                 tk.Label(line, text=tag, bg=CARD, fg=col,
                          font=(FONT, 8), padx=6).pack(side="left")
+
+    def _on_theme_changed():
+        # 换肤回调：先同步闭包内的 P/BG/CARD 等颜色，再重绘两处动态区域，
+        # 各自异常隔离，单区渲染失败不影响另一区（与旧整树换色行为一致）。
+        _sync_theme_colors()
+        try:
+            render_accounts()
+        except Exception:
+            pass
+        try:
+            render_history()
+        except Exception:
+            pass
+
+    theme.on_change = _on_theme_changed
 
     def on_save_account():
         pf = platform_var.get()

@@ -14,7 +14,7 @@ block_cipher = None
 hiddenimports = collect_submodules("trae_checkin")
 
 a = Analysis(
-    ["launcher.py"],
+    ["trae_checkin/__main__.py"],
     pathex=[],
     binaries=[],
     datas=[
