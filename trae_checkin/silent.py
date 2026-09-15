@@ -15,7 +15,8 @@ from .constants import PLATFORM_LABELS, PLAT_TRAEWORK, PLAT_WORKBUDDY
 from .history import history_identity, history_recent_rows, load_history, record_checkin_history
 from .jsonstore import _load_json_file, _save_json_file
 from .push import push_wechat
-from .reports import build_checkin_report, build_monthly_report, build_weekly_report
+from .reports import (build_checkin_report, build_checkin_start_report,
+                      build_monthly_report, build_weekly_report)
 from .runtime import _log_dir, log
 from .service import run_batch_checkin
 from .settings import OFFLINE_ALERT_KEY, load_settings, push_configured, save_settings_dict
@@ -326,6 +327,43 @@ def check_and_push_offline_alerts(settings: Optional[dict] = None) -> int:
         return 0
 
 
+def _push_checkin_start(accounts: list[dict]) -> None:
+    """定时任务确认要执行签到时推送一条「开始签到」通知。
+
+    每日到点与关机错过后的开机/登录补签共用同一静默入口，两种场景
+    都会发送。当天最多一条（用 period_markers 的 start_日期 键去重，
+    同一天多个触发器不会重复打扰）；TRAESIGN_FORCE=1 可绕过去重便于
+    排查。属于独立消息，不受「仅失败时推送」开关影响；推送失败或
+    任何异常都不影响签到主流程。
+    """
+    try:
+        settings = load_settings()
+        if not (settings.get("push_enabled") and push_configured(settings)):
+            return
+        now = datetime.now()
+        key = "start_" + now.strftime("%Y-%m-%d")
+        force = os.environ.get("TRAESIGN_FORCE") == "1"
+        markers = _load_json_file(PERIOD_MARKERS_FILE)
+        sent = markers.get("sent")
+        if not isinstance(sent, dict):
+            sent = {}
+        if not force and sent.get(key):
+            log.info("今日已推送过开始签到消息，跳过重复推送。")
+            return
+        title, content = build_checkin_start_report(accounts)
+        pushed, pmsg = push_wechat(settings, title, content, kind="开始签到")
+        (log.info if pushed else log.error)(f"开始签到消息推送：{pmsg}")
+        if pushed:
+            sent[key] = now.strftime("%Y-%m-%d %H:%M")
+            # 仅清理 60 天前的旧标记
+            cutoff = (now - timedelta(days=60)).strftime("%Y-%m-%d")
+            sent = {k: v for k, v in sent.items()
+                    if k[-10:] >= cutoff or not isinstance(v, str)}
+            _save_json_file(PERIOD_MARKERS_FILE, {"sent": sent})
+    except Exception as e:
+        log.warning(f"开始签到消息推送异常（不影响签到）：{e}")
+
+
 def _send_periodic_reports() -> None:
     """
     周一周报、每月 1~3 号月报（补上月初几天机器没开机的情况）。
@@ -399,6 +437,9 @@ def silent_run() -> int:
                 return 0
         except Exception as e:
             log.warning(f"今日签到状态判断失败，按正常流程执行：{e}")
+    # 任务确认需要执行签到：先推送「开始签到」通知（到点与开机补签统一
+    # 覆盖，每日至多一条），让用户第一时间知道定时任务已经运行起来。
+    _push_checkin_start(accounts)
     # 随机抖动 0~5 分钟，避免每天固定整点请求（可通过环境变量关闭，便于测试）
     if os.environ.get("TRAESIGN_NO_JITTER") != "1":
         jitter = random.randint(0, 300)

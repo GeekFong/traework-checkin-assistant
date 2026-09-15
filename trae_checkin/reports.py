@@ -86,6 +86,36 @@ def _relogin_guide(relogin_items: list[dict]) -> list[str]:
     return lines
 
 
+def build_checkin_start_report(accounts: list[dict]) -> tuple[str, str]:
+    """定时任务触发时生成「开始签到」通知的 (标题, Markdown 正文)。
+
+    每日到点与关机错过后的开机/登录补签共用同一静默入口，
+    因此本消息统一覆盖两种场景，不区分触发来源。
+    """
+    now = datetime.now()
+    enabled = [a for a in accounts if a.get("enabled", True)]
+    n = len(enabled)
+    title = (f"🔔 定时签到任务已启动（{n} 个账号） "
+             f"{now.strftime('%m-%d %H:%M')}")
+    lines = ["**定时签到任务已触发，即将开始签到。**", ""]
+    for a in enabled:
+        label = PLATFORM_LABELS.get(
+            a.get("platform", PLAT_TRAEWORK), a.get("platform", ""))
+        user = a.get("note") or a.get("display_name") or a.get(
+            "username") or "未知账号"
+        lines.append(f"- [{label}] {user}")
+    lines += [
+        "",
+        "同时会检测桌面客户端登录态，为未保存快照的账号自动补签。",
+        "",
+        "> 若设定时间点本机处于关机状态，本条消息来自开机后的自动补签。",
+        "> 全部签到完成后，将再推送一条当日签到结果日报。",
+        "",
+        f"触发时间：{now.strftime('%Y-%m-%d %H:%M:%S')}",
+    ]
+    return title, "\n".join(lines)
+
+
 def build_checkin_report(results: list[dict], test: bool = False) -> tuple[str, str]:
     """根据批量签到结果生成 (标题, Markdown 正文)。失败账号置顶并附处理指引。"""
     if test:
