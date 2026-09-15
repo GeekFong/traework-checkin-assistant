@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "traework-checkin-assistant"
+version = "1.1.0"
+description = "TraeWork CN / WorkBuddy 每日自动签到助手（Windows 桌面工具）"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "TraeWork Checkin Assistant Contributors" }]
+keywords = ["traework", "workbuddy", "checkin", "windows", "tkinter"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: Microsoft :: Windows",
+    "Environment :: Win32 (MS Windows)",
+    "Topic :: Utilities",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = []
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.0"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+trae-checkin = "trae_checkin.cli:main"
+
+[project.gui-scripts]
+trae-checkin-gui = "trae_checkin.gui:run_gui"
+
+[tool.setuptools]
+packages = ["trae_checkin", "trae_checkin.gui", "trae_checkin.platforms"]
+
+[tool.setuptools.package-data]
+trae_checkin = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "gui: 需要真实 Tk 环境的 GUI 冒烟测试（可用 -m 'not gui' 跳过）",
+]

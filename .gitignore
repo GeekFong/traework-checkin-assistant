@@ -1,0 +1,48 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+# Installer output
+installer/Output/
+Output/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime user data (NEVER commit personal data)
+accounts.json
+settings.json
+checkin_history.json
+push_history.json
+period_markers.json
+trae_checkin.log
+*.log
+crashes/
+.restore-bak
+.write_test
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+*.swp
