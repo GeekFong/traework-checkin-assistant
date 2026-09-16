@@ -1,11 +1,19 @@
 # TraeWork 签到助手
 
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-lightgrey.svg)](#)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tkinter](https://img.shields.io/badge/GUI-Tkinter-orange.svg)](#)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-lightgrey?style=flat-square&logo=windows&logoColor=white)](#环境要求)
+[![GUI](https://img.shields.io/badge/GUI-Tkinter-orange?style=flat-square)](#功能特性)
+[![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen?style=flat-square)](#功能特性)
+[![License](https://img.shields.io/github/license/GeekFong/traework-checkin-assistant?style=flat-square&color=green)](LICENSE)
+
+[![Stars](https://img.shields.io/github/stars/GeekFong/traework-checkin-assistant?style=flat-square&logo=github&logoColor=white)](https://github.com/GeekFong/traework-checkin-assistant)
+[![Forks](https://img.shields.io/github/forks/GeekFong/traework-checkin-assistant?style=flat-square&logo=github&logoColor=white)](https://github.com/GeekFong/traework-checkin-assistant)
+[![Issues](https://img.shields.io/github/issues/GeekFong/traework-checkin-assistant?style=flat-square&logo=github&logoColor=white)](https://github.com/GeekFong/traework-checkin-assistant/issues)
+[![Last commit](https://img.shields.io/github/last-commit/GeekFong/traework-checkin-assistant?style=flat-square&color=blue)](https://github.com/GeekFong/traework-checkin-assistant/commits/main)
 
 > TraeWork CN / 腾讯 WorkBuddy 每日自动签到桌面工具。多账号批量签到、结果微信推送、90 天历史统计、掉线预警与健康自检，纯 Python 标准库实现，Windows 10/11 双击即用。
+
+项目主页：[GeekFong/traework-checkin-assistant](https://github.com/GeekFong/traework-checkin-assistant) ｜ [下载 Release](https://github.com/GeekFong/traework-checkin-assistant/releases) ｜ [反馈问题](https://github.com/GeekFong/traework-checkin-assistant/issues)
 
 ---
 
@@ -64,7 +72,7 @@
 
 ### 方式一：直接使用发布版（推荐普通用户）
 
-1. 到仓库的 Releases 页面下载最新的 `TraeWorkCheckin.exe`（绿色单文件）或安装包。
+1. 到仓库的 [Releases](https://github.com/GeekFong/traework-checkin-assistant/releases) 页面下载最新的 `TraeWorkCheckin.exe`（绿色单文件）或安装包。
 2. 双击运行。若出现“Windows 已保护你的电脑”，点击“更多信息 → 仍要运行”（程序未购买收费数字代码签名）。
 3. 窗口顶部选择平台，状态显示“已登录”后点击“立即签到”。
 4. 在“每日自动签到”区域设置时间并开启，之后每天自动后台签到。
@@ -72,7 +80,7 @@
 ### 方式二：从源码运行（适合开发者）
 
 ```powershell
-git clone https://github.com/<your-name>/traework-checkin-assistant.git
+git clone https://github.com/GeekFong/traework-checkin-assistant.git
 cd traework-checkin-assistant
 python -m trae_checkin
 ```
