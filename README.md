@@ -55,11 +55,11 @@
 
 主界面：环境状态、签到结果、多账号管理与自动签到设置。
 
-<img src="docs/images/main.png" alt="主界面" width="460"/>
+![主界面](docs/images/main.png)
 
 签到历史与统计：连续天数、成功率、90 天热力日历与积分趋势。
 
-<img src="docs/images/history.png" alt="签到历史与统计" width="460"/>
+![签到历史与统计](docs/images/history.png)
 
 ## 环境要求
 
