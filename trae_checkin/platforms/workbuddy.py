@@ -68,8 +68,16 @@ def wb_load_session_file(path: Path, retries: int = 4) -> dict:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            if not isinstance(data, dict) or not data.get("auth", {}).get("accessToken"):
+            if not isinstance(data, dict):
                 raise ValueError("会话文件内容不完整")
+            token = data.get("auth", {}).get("accessToken")
+            if not token:
+                raise ValueError("会话文件内容不完整")
+            # 新版桌面端会把凭证改写成加密信封（dict），这种内容不可直接使用，
+            # 必须按"未登录"处理并触发 DPAPI 降级，绝不能当成有效会话保存。
+            if not isinstance(token, str):
+                raise ValueError("会话文件中的凭证是加密信封（客户端已加密存储），"
+                                 "请在 WorkBuddy 客户端重新登录后重试")
             return data
         except (PermissionError, OSError, json.JSONDecodeError, ValueError) as e:
             last_err = e
@@ -175,7 +183,8 @@ def wb_load_session_vscdb() -> dict:
         raise KeyError("state.vscdb 中未找到 WorkBuddy 登录凭证")
     plain = wb_decrypt_v10(wb_extract_blob(row[0]), key)
     data = json.loads(plain.decode("utf-8"))
-    if not data.get("auth", {}).get("accessToken"):
+    token = data.get("auth", {}).get("accessToken")
+    if not isinstance(token, str) or not token:
         raise ValueError("解密得到的会话不完整")
     return data
 
@@ -204,24 +213,29 @@ def wb_is_logged_in() -> tuple[bool, str]:
         return False, str(e)
 
 
+def _wb_str(v: Any) -> str:
+    """只接受非空字符串；dict（加密信封）等一律视为无效。"""
+    return v.strip() if isinstance(v, str) and v.strip() else ""
+
+
 def wb_session_secret_obj(sess: dict) -> dict:
-    """从会话中抽取需要加密快照的最小字段。"""
+    """从会话中抽取需要加密快照的最小字段（仅保留合法的字符串值）。"""
     auth = sess.get("auth", {})
     acc = sess.get("account", {})
     return {
-        "token": auth.get("accessToken", ""),
-        "refreshToken": auth.get("refreshToken", ""),
+        "token": _wb_str(auth.get("accessToken")),
+        "refreshToken": _wb_str(auth.get("refreshToken")),
         "expiresAt": auth.get("expiresAt", 0),
         "refreshExpiresAt": auth.get("refreshExpiresAt", 0),
-        "uid": acc.get("uid", ""),
-        "domain": auth.get("domain", ""),
-        "enterpriseId": acc.get("enterpriseId", "") or acc.get("tenantId", ""),
-        "tenantId": acc.get("tenantId", "") or acc.get("enterpriseId", ""),
+        "uid": _wb_str(acc.get("uid")),
+        "domain": _wb_str(auth.get("domain")),
+        "enterpriseId": _wb_str(acc.get("enterpriseId")) or _wb_str(acc.get("tenantId")),
+        "tenantId": _wb_str(acc.get("tenantId")) or _wb_str(acc.get("enterpriseId")),
     }
 
 
 def wb_account_key(sess: dict) -> str:
-    uid = sess.get("account", {}).get("uid", "")
+    uid = _wb_str(sess.get("account", {}).get("uid"))
     if not uid:
         raise ValueError("会话中缺少账号 uid")
     return f"wb:{uid}"
@@ -229,8 +243,11 @@ def wb_account_key(sess: dict) -> str:
 
 def wb_account_display(sess: dict) -> str:
     acc = sess.get("account", {})
-    return acc.get("nickname") or acc.get("phoneNumber") or acc.get("uin") \
-        or acc.get("uid", "WorkBuddy 账号")
+    for field in ("nickname", "phoneNumber", "uin", "uid"):
+        v = _wb_str(acc.get(field))
+        if v:
+            return v
+    return "WorkBuddy 账号"
 
 
 def wb_detect_version() -> str:

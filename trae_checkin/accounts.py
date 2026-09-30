@@ -171,6 +171,12 @@ def _save_current_wb_account() -> tuple[bool, str]:
     key = wb_account_key(sess)
     acc = sess.get("account", {})
     secret_obj = wb_session_secret_obj(sess)
+    # 守卫：客户端把凭证改成加密信封等情况会拿不到真实 token，
+    # 此时必须中止保存，避免把不可用凭证写进快照、污染账号与历史。
+    if not secret_obj.get("token"):
+        return False, ("未能读取到 WorkBuddy 的有效登录凭证"
+                       "（客户端可能已加密存储），请在 WorkBuddy 客户端"
+                       "重新登录后再保存。")
     record = {
         "platform": PLAT_WORKBUDDY,
         "display_name": wb_account_display(sess),
