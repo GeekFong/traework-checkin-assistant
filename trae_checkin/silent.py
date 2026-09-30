@@ -11,10 +11,11 @@ import random
 import time
 from typing import Any, Optional
 from .accounts import list_accounts
-from .constants import PLATFORM_LABELS, PLAT_TRAEWORK, PLAT_WORKBUDDY
+from .constants import APP_NAME, PLATFORM_LABELS, PLAT_TRAEWORK, PLAT_WORKBUDDY
 from .history import history_identity, history_recent_rows, load_history, record_checkin_history
 from .jsonstore import _load_json_file, _save_json_file
 from .push import push_wechat
+from .recovery import check_login_health, recover_login
 from .reports import (build_checkin_report, build_checkin_start_report,
                       build_monthly_report, build_weekly_report)
 from .runtime import _log_dir, log
@@ -414,14 +415,82 @@ def _send_periodic_reports() -> None:
         log.warning(f"周期报告检查失败（不影响签到）：{e}")
 
 
+def _platform_in_use(plat: str, accounts: list[dict]) -> bool:
+    """平台是否"在用"：有启用的快照账号、本地登录态或已安装客户端。"""
+    if any(a.get("platform") == plat and a.get("enabled", True)
+           for a in accounts):
+        return True
+    try:
+        from .recovery import login_state
+        logged, _ = login_state(plat)
+        if logged:
+            return True
+    except Exception:
+        pass
+    try:
+        from .launcher import find_platform_exes
+        if find_platform_exes(plat):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _push_health_alert(label: str, message: str) -> None:
+    """登录态无法自动恢复时推送提醒（未配置推送则跳过）。"""
+    try:
+        settings = load_settings()
+        if not push_configured(settings):
+            return
+        push_wechat(settings, f"{APP_NAME}登录体检",
+                    f"{label} 登录状态失效且未能自动恢复：\n{message}\n"
+                    "请打开客户端手动登录一次，之后会自动继续。",
+                    kind="登录体检")
+    except Exception as e:
+        log.warning(f"登录体检提醒推送失败：{e}")
+
+
+def _daily_login_health_check(accounts: list[dict]) -> None:
+    """每天自动检测各平台登录状态：失效则立刻退出客户端并重启，等待自动重新登录。
+
+    恢复成功后会刷新凭证快照，让随后的签到直接用上新凭证；
+    任何异常都只记录日志，不影响主签到流程。
+    """
+    for plat in (PLAT_TRAEWORK, PLAT_WORKBUDDY):
+        try:
+            if not _platform_in_use(plat, accounts):
+                continue
+            health = check_login_health(plat)
+            if not health["need_relogin"]:
+                log.info(f"[每日体检] {health['label']} 登录状态正常")
+                continue
+            log.warning(f"[每日体检] {health['label']} 登录状态失效："
+                        f"{health['reason']}，尝试重启客户端自动恢复")
+            rec = recover_login(plat)
+            if rec["ok"]:
+                log.info(f"[每日体检] {rec['message']}")
+            else:
+                log.error(f"[每日体检] {rec['message']}")
+                _push_health_alert(health["label"], rec["message"])
+        except Exception as e:
+            log.warning(f"[每日体检] {plat} 处理异常（不影响签到）：{e}")
+
+
 def silent_run() -> int:
-    """定时任务静默执行：周期报告 → 批量签到（失败分轮重试）→ 汇总推送。"""
+    """定时任务静默执行：周期报告 → 每日登录体检 → 批量签到（失败分轮重试）→ 汇总推送。"""
     log.info("=" * 40)
     # 周报/月报在早退判断之前发送：即使今天账号都已签到，周一/月初也应收报告
     try:
         _send_periodic_reports()
     except Exception as e:
         log.warning(f"周期报告流程异常：{e}")
+
+    # 每日登录体检放在早退判断之前：即使今天已全部签到，也要保证每天必检；
+    # 体检若刷新了凭证快照，随后的 list_accounts 会拿到最新账号数据
+    try:
+        _daily_login_health_check(list_accounts())
+    except Exception as e:
+        log.warning(f"每日登录体检流程异常（不影响签到）：{e}")
 
     accounts = list_accounts()
     # 定时任务一旦触发就先推送「开始签到」通知（每日至多一条，由内部去重），

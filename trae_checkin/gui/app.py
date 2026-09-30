@@ -18,6 +18,7 @@ from ..crashhandlers import clear_crash_dumps, install_exception_hooks, install_
 from ..history import TREND_MAX_LINES, account_status_lookup, export_history_csv, history_calendar, history_credit_trend, history_identity, history_monthly_stats, history_recent_rows, history_summary, load_history, record_checkin_history
 from ..launcher import find_install_exes, find_wb_install_exes, get_app_data_dir, launch_app, launch_platform_app
 from ..push import push_wechat
+from ..recovery import recover_login
 from ..reports import _is_relogin_failure, build_checkin_report
 from ..runtime import APP_VERSION, LOG_FILE, _log_dir, _run, log, resource_path
 from ..scheduler import create_scheduled_task, delete_scheduled_task, task_exists
@@ -740,8 +741,38 @@ def run_gui() -> int:
         threading.Thread(target=worker, daemon=True).start()
 
     checkin_btn.config(command=do_checkin)
-    refresh_btn.config(command=lambda: threading.Thread(target=refresh_ui,
-                                                        daemon=True).start())
+
+    def do_recheck():
+        """重新检测：若发现登录状态失效，立刻退出平台客户端并重新启动，自动恢复登录。"""
+        refresh_btn.config(state="disabled", text="检测中…")
+
+        def progress(msg: str):
+            root.after(0, lambda: result_var.set(msg))
+
+        def worker():
+            pf = platform_var.get()
+            try:
+                rec = recover_login(pf, on_progress=progress)
+            except Exception as e:
+                rec = {"ok": False, "stage": "error",
+                       "message": f"自动恢复流程异常：{e}"}
+
+            def done():
+                refresh_btn.config(state="normal", text="重新检测")
+                if rec.get("ok") and rec.get("stage") == "recovered":
+                    messagebox.showinfo(APP_NAME,
+                                        rec.get("message", "登录态已自动恢复"))
+                elif not rec.get("ok") and rec.get("stage") not in ("healthy",):
+                    messagebox.showwarning(
+                        APP_NAME,
+                        (rec.get("message") or "未能自动恢复登录状态")
+                        + "\n下面显示登录引导，完成后点击「重新检测」即可。")
+                refresh_ui()
+            root.after(0, done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    refresh_btn.config(command=do_recheck)
 
     def refresh_task_state():
         exists = task_exists()
@@ -1720,16 +1751,18 @@ def run_gui() -> int:
         except Exception as e:
             log.warning(f"崩溃记录提示流程异常：{e}")
 
-    # 首次启动：风险与隐私声明确认；测试可用 TRAESIGN_NO_DISCLAIMER=1 跳过
+    # 首次启动：风险与隐私声明确认；测试可用 TRAESIGN_NO_DISCLAIMER=1 跳过。
+    # 注意：不能先 root.withdraw() 再弹声明框——声明框是 transient(root) 的
+    # Toplevel，Win32 中 owner 隐藏时 owned 窗口也随之不可见，会造成
+    # "进程存活但没有任何窗口"的假死；这里让声明框直接以模态浮在主窗口之上。
     if os.environ.get("TRAESIGN_NO_DISCLAIMER") != "1":
         try:
             if not load_settings().get("disclaimer_accepted"):
-                root.withdraw()
+                root.update_idletasks()
                 if not show_disclaimer_dialog():
                     root.destroy()
                     return 0
                 accept_disclaimer()
-                root.deiconify()
         except Exception as e:
             log.warning(f"首次启动声明流程异常：{e}")
 
