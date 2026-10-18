@@ -123,7 +123,7 @@ def build_checkin_report(results: list[dict], test: bool = False) -> tuple[str, 
     if test:
         return "签到助手：推送测试成功", (
             "这是一条测试消息。\n\n收到此消息说明推送渠道已配置成功，"
-            "今后每日自动签到（TraeWork / WorkBuddy）的结果会汇总推送到这里。\n\n"
+            "今后每日自动签到（TraeWork / Trae CN）的结果会汇总推送到这里。\n\n"
             "可同时开启多个推送渠道；登录态失效时消息内会附重新登录操作步骤。")
     total = len(results)
     ok_n = sum(1 for r in results if r.get("ok"))

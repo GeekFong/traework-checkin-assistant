@@ -12,7 +12,9 @@ import json
 import os
 import time
 from typing import Any, Optional
-from ..constants import PLAT_WORKBUDDY, WB_CHECKIN_CLAIM_URL, WB_CHECKIN_STATUS_URL, WB_REFRESH_TOKEN_URL
+from ..constants import (PLAT_WORKBUDDY, WB_CHECKIN_CLAIM_URL,
+                         WB_CHECKIN_STATUS_URL, WB_REFRESH_TOKEN_URL,
+                         PLATFORM_LABELS)
 from ..crypto import _DATA_BLOB
 from ..httpclient import http_post
 from ..runtime import log
@@ -21,13 +23,25 @@ from ..runtime import log
 _wb_ua_cache: Optional[str] = None
 
 
+# 展示名跟随客户端新名称（腾讯 WorkBuddy 已并入 Trae CN）。
+WB_LABEL = PLATFORM_LABELS[PLAT_WORKBUDDY]
+
+
 WB_AUTH_REL = Path("CodeBuddyExtension") / "Data" / "Public" / "auth" / "workbuddy-desktop.info"
 
 
-WB_LOCAL_STATE_REL = Path("CodeBuddy CN") / "Local State"
+WB_LOCAL_STATE_RELS = [
+    # 腾讯 CodeBuddy（原 WorkBuddy）数据目录：当前凭证所在地，优先。
+    Path("CodeBuddy CN") / "Local State",
+    # 客户端并入 Trae CN 后的数据目录：未来凭证可能迁移至此，作兜底。
+    Path("Trae CN") / "Local State",
+]
 
 
-WB_VSCDB_REL = Path("CodeBuddy CN") / "User" / "globalStorage" / "state.vscdb"
+WB_VSCDB_RELS = [
+    Path("CodeBuddy CN") / "User" / "globalStorage" / "state.vscdb",
+    Path("Trae CN") / "User" / "globalStorage" / "state.vscdb",
+]
 
 
 WB_SECRET_KEY = ('secret://{"extensionId":"tencent-cloud.coding-copilot",'
@@ -77,7 +91,7 @@ def wb_load_session_file(path: Path, retries: int = 4) -> dict:
             # 必须按"未登录"处理并触发 DPAPI 降级，绝不能当成有效会话保存。
             if not isinstance(token, str):
                 raise ValueError("会话文件中的凭证是加密信封（客户端已加密存储），"
-                                 "请在 WorkBuddy 客户端重新登录后重试")
+                                 "请在 Trae CN 客户端重新登录后重试")
             return data
         except (PermissionError, OSError, json.JSONDecodeError, ValueError) as e:
             last_err = e
@@ -85,27 +99,32 @@ def wb_load_session_file(path: Path, retries: int = 4) -> dict:
     raise FileNotFoundError(f"读取 WorkBuddy 会话失败：{last_err}")
 
 
-def wb_local_state_path() -> Optional[Path]:
+def wb_local_state_candidates() -> list[Path]:
     appdata = os.environ.get("APPDATA")
     if not appdata:
-        return None
-    p = Path(appdata) / WB_LOCAL_STATE_REL
-    return p if p.exists() else None
+        return []
+    base = Path(appdata)
+    return [base / rel for rel in WB_LOCAL_STATE_RELS
+            if (base / rel).exists()]
 
 
-def wb_vscdb_path() -> Optional[Path]:
+def wb_vscdb_candidates() -> list[tuple[Path, Path]]:
+    """返回 (state.vscdb, 对应 Local State) 候选组合，按优先级排序。"""
     appdata = os.environ.get("APPDATA")
     if not appdata:
-        return None
-    p = Path(appdata) / WB_VSCDB_REL
-    return p if p.exists() else None
+        return []
+    base = Path(appdata)
+    pairs: list[tuple[Path, Path]] = []
+    for vscdb_rel, ls_rel in zip(WB_VSCDB_RELS, WB_LOCAL_STATE_RELS):
+        vscdb = base / vscdb_rel
+        ls = base / ls_rel
+        if vscdb.exists():
+            pairs.append((vscdb, ls))
+    return pairs
 
 
-def wb_get_master_key() -> bytes:
-    """从 CodeBuddy CN 的 Local State 解出 Chromium os_crypt 主密钥。"""
-    ls_path = wb_local_state_path()
-    if not ls_path:
-        raise FileNotFoundError("未找到 WorkBuddy 的 Local State")
+def wb_get_master_key(ls_path: Path) -> bytes:
+    """从桌面端 Local State 解出 Chromium os_crypt 主密钥。"""
     with open(ls_path, "r", encoding="utf-8") as f:
         ls = json.load(f)
     enc = base64.b64decode(ls["os_crypt"]["encrypted_key"])
@@ -160,33 +179,47 @@ def wb_extract_blob(v: Any) -> bytes:
 
 
 def wb_load_session_vscdb() -> dict:
-    """DPAPI 降级路径：从 state.vscdb 解密当前会话。拷贝后读取以避免占用。"""
+    """DPAPI 降级路径：从 state.vscdb 解密当前会话。拷贝后读取以避免占用。
+
+    依次尝试 CodeBuddy CN 与 Trae CN 两个数据目录（客户端并入 Trae CN 后，
+    凭证未来可能迁到 Trae CN 的存储中），任一解出有效会话即返回。
+    """
     import sqlite3
     import tempfile
-    src = wb_vscdb_path()
-    if not src:
-        raise FileNotFoundError("未找到 WorkBuddy 的 state.vscdb")
-    key = wb_get_master_key()
-    tmp_dir = Path(tempfile.gettempdir())
-    db_copy = tmp_dir / "wb_state_checkin.vscdb"
-    try:
-        shutil_copy_file(src, db_copy)
-    except Exception:
-        db_copy = src  # 拷贝失败则直接只读打开
-    con = sqlite3.connect(f"file:{db_copy}?mode=ro", uri=True)
-    try:
-        row = con.execute(
-            "SELECT value FROM ItemTable WHERE key = ?", (WB_SECRET_KEY,)).fetchone()
-    finally:
-        con.close()
-    if not row:
-        raise KeyError("state.vscdb 中未找到 WorkBuddy 登录凭证")
-    plain = wb_decrypt_v10(wb_extract_blob(row[0]), key)
-    data = json.loads(plain.decode("utf-8"))
-    token = data.get("auth", {}).get("accessToken")
-    if not isinstance(token, str) or not token:
-        raise ValueError("解密得到的会话不完整")
-    return data
+    pairs = wb_vscdb_candidates()
+    if not pairs:
+        raise FileNotFoundError("未找到 WorkBuddy / Trae CN 的 state.vscdb")
+    last_err: Optional[Exception] = None
+    for src, ls_path in pairs:
+        try:
+            key = wb_get_master_key(ls_path)
+        except Exception as e:
+            last_err = e
+            continue
+        tmp_dir = Path(tempfile.gettempdir())
+        db_copy = tmp_dir / "wb_state_checkin.vscdb"
+        try:
+            shutil_copy_file(src, db_copy)
+        except Exception:
+            db_copy = src  # 拷贝失败则直接只读打开
+        con = sqlite3.connect(f"file:{db_copy}?mode=ro", uri=True)
+        try:
+            row = con.execute(
+                "SELECT value FROM ItemTable WHERE key = ?", (WB_SECRET_KEY,)).fetchone()
+        finally:
+            con.close()
+        if not row:
+            last_err = KeyError(f"{src.parent.parent.parent.name} 的 state.vscdb 中"
+                                "未找到登录凭证")
+            continue
+        plain = wb_decrypt_v10(wb_extract_blob(row[0]), key)
+        data = json.loads(plain.decode("utf-8"))
+        token = data.get("auth", {}).get("accessToken")
+        if not isinstance(token, str) or not token:
+            last_err = ValueError("解密得到的会话不完整")
+            continue
+        return data
+    raise last_err or FileNotFoundError("未能从本地存储解出 WorkBuddy 会话")
 
 
 def shutil_copy_file(src: Path, dst: Path) -> None:
@@ -247,11 +280,11 @@ def wb_account_display(sess: dict) -> str:
         v = _wb_str(acc.get(field))
         if v:
             return v
-    return "WorkBuddy 账号"
+    return "Trae CN 账号"
 
 
 def wb_detect_version() -> str:
-    """从已安装的 WorkBuddy.exe 文件版本号动态获取版本，读不到时回退默认。"""
+    """从已安装的桌面端 exe 读取版本号（Trae CN / WorkBuddy），读不到时回退默认。"""
     global _wb_ua_cache
     if _wb_ua_cache is not None:
         return _wb_ua_cache
@@ -265,11 +298,15 @@ def wb_detect_version() -> str:
                 continue
             b = Path(base)
             if env_name == "LOCALAPPDATA":
+                exes.extend(b.glob("Programs/Trae CN*/Trae CN.exe"))
                 exes.extend(b.glob("Programs/WorkBuddy*/WorkBuddy.exe"))
+                exes.extend(b.glob("Trae CN*/Trae CN.exe"))
                 exes.extend(b.glob("WorkBuddy*/WorkBuddy.exe"))
             else:
+                exes.extend(b.glob("Trae CN*/Trae CN.exe"))
                 exes.extend(b.glob("WorkBuddy*/WorkBuddy.exe"))
-        for p in [Path("G:/workb/WorkBuddy/WorkBuddy.exe")] + exes:
+        for p in [Path("D:/Trae CN/Trae CN.exe"),
+                  Path("G:/workb/WorkBuddy/WorkBuddy.exe")] + exes:
             if p.exists():
                 size = (ctypes.windll.version.GetFileVersionInfoSizeW(str(p), None)
                         if os.name == "nt" else 0)
@@ -369,7 +406,7 @@ def wb_is_expired(secret: dict, skew: int = 300) -> bool:
 
 def wb_refresh_token(secret: dict) -> dict:
     """用 refreshToken 换新 accessToken；返回更新后的 secret 对象。"""
-    log.info("WorkBuddy 凭证即将过期，正在自动刷新...")
+    log.info("Trae CN（WorkBuddy）凭证即将过期，正在自动刷新...")
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -383,9 +420,9 @@ def wb_refresh_token(secret: dict) -> dict:
         headers["X-Domain"] = secret["domain"]
     status, resp = http_post(WB_REFRESH_TOKEN_URL, headers, {})
     if status in (401, 403):
-        raise RuntimeError("WorkBuddy 登录态已失效，请重新打开桌面端登录后再次保存该账号。")
+        raise RuntimeError("Trae CN（WorkBuddy）登录态已失效，请重新打开桌面端登录后再次保存该账号。")
     if status != 200:
-        raise RuntimeError(f"刷新 WorkBuddy 凭证失败 (HTTP {status})")
+        raise RuntimeError(f"刷新 Trae CN（WorkBuddy）凭证失败 (HTTP {status})")
     new_auth = resp.get("data") if isinstance(resp.get("data"), dict) else None
     if not new_auth:
         new_auth = resp if isinstance(resp, dict) and resp.get("accessToken") else None
@@ -438,11 +475,11 @@ def _wb_recheck(headers: dict) -> Optional[dict]:
 def run_wb_checkin_with_credential(secret: dict, display_name: str = "",
                                    status_only: bool = False,
                                    on_token_refreshed=None) -> dict:
-    """用快照凭证执行 WorkBuddy 签到，返回与 TraeWork 统一结构的结果。"""
+    """用快照凭证执行签到，返回与 TraeWork 统一结构的结果。"""
     result: dict[str, Any] = {
         "ok": False, "message": "", "already": False,
-        "platform": PLAT_WORKBUDDY, "platform_label": "WorkBuddy",
-        "username": display_name or secret.get("uid") or "WorkBuddy 账号",
+        "platform": PLAT_WORKBUDDY, "platform_label": WB_LABEL,
+        "username": display_name or secret.get("uid") or "Trae CN 账号",
     }
     if not secret.get("token"):
         result["message"] = "凭证中缺少 Token，请重新保存该账号。"
@@ -468,7 +505,7 @@ def run_wb_checkin_with_credential(secret: dict, display_name: str = "",
         result["message"] = f"查询签到状态失败：{e}"
         return result
     if st_code in (401, 403):
-        result["message"] = "WorkBuddy 登录态已失效，请重新登录后再次保存。"
+        result["message"] = "Trae CN（WorkBuddy）登录态已失效，请重新登录后再次保存。"
         return result
 
     st_data = st_resp.get("data") if isinstance(st_resp, dict) else None
@@ -525,13 +562,13 @@ def run_wb_checkin_with_credential(secret: dict, display_name: str = "",
         if recheck is not None:
             result.update(recheck)
             if result.get("ok"):
-                log.warning(f"[WorkBuddy/{result['username']}] "
+                log.warning(f"[{WB_LABEL}/{result['username']}] "
                             f"签到异常但回查已签：{e}")
                 return result
         result["message"] = f"签到请求失败：{e}"
         return result
     if c_code in (401, 403):
-        result["message"] = "WorkBuddy 登录态已失效，请重新登录后再次保存。"
+        result["message"] = "Trae CN（WorkBuddy）登录态已失效，请重新登录后再次保存。"
         return result
     c_data = c_resp.get("data") if isinstance(c_resp, dict) else None
     c_env = c_resp.get("code") if isinstance(c_resp, dict) else None
@@ -543,7 +580,7 @@ def run_wb_checkin_with_credential(secret: dict, display_name: str = "",
         # 兜底：非预期响应也回查一次，避免漏报已到账
         recheck = _wb_recheck(headers)
         if recheck is not None and recheck.get("ok"):
-            log.warning(f"[WorkBuddy/{result['username']}] "
+            log.warning(f"[{WB_LABEL}/{result['username']}] "
                         f"签到响应异常(HTTP {c_code})但回查已签")
             result.update(recheck)
             return result
@@ -568,21 +605,21 @@ def run_wb_checkin_with_credential(secret: dict, display_name: str = "",
             result["suspicious"] = True
             msg = ("⚠ 签到流程已执行，但未抓到积分/成功信号，"
                    "疑似客户端改版，规则待更新，请人工打开客户端确认")
-            log.warning(f"[WorkBuddy/{result['username']}] {msg}；"
+            log.warning(f"[{WB_LABEL}/{result['username']}] {msg}；"
                         f"领取响应字段：{sorted(c_data.keys())}")
     result["message"] = msg
-    log.info(f"[WorkBuddy/{result['username']}] {msg}")
+    log.info(f"[{WB_LABEL}/{result['username']}] {msg}")
     return result
 
 
 def run_wb_checkin_live(status_only: bool = False) -> dict:
-    """读取当前桌面端登录的 WorkBuddy 账号并签到（单账号即时流程）。"""
+    """读取当前桌面端登录的账号并签到（单账号即时流程）。"""
     try:
         sess = load_wb_session()
     except Exception as e:
         return {"ok": False, "message": str(e), "already": False,
-                "platform": PLAT_WORKBUDDY, "platform_label": "WorkBuddy",
-                "username": "WorkBuddy 账号"}
+                "platform": PLAT_WORKBUDDY, "platform_label": WB_LABEL,
+                "username": "Trae CN 账号"}
     secret = wb_session_secret_obj(sess)
     return run_wb_checkin_with_credential(
         secret, display_name=wb_account_display(sess), status_only=status_only)

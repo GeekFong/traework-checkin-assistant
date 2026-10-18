@@ -41,7 +41,7 @@ def _silent_expected_identities(accounts: list[dict]) -> set:
     静默运行预期会签到的账号集合：
       - 所有启用的账号快照；
       - 近 7 天历史中出现过、但其平台未被快照覆盖的桌面端 live 兜底账号
-        （例如只保存了 TraeWork 快照，但 WorkBuddy 也一直靠登录态自动签）。
+        （例如只保存了 TraeWork 快照，但 Trae CN 也一直靠登录态自动签）。
     """
     enabled = [a for a in accounts if a.get("enabled", True)]
     expected = {history_identity(a.get("platform", ""), a.get("username", ""))
@@ -113,7 +113,7 @@ def _silent_run_with_retry(accounts: list[dict]) -> list[dict]:
         # live 兜底：首轮尝试未覆盖平台；后续轮次只重试失败平台
         results = _silent_append_live(results, saved_platforms)
     else:
-        log.info("未配置多账号，尝试当前客户端登录账号签到（TraeWork / WorkBuddy）")
+        log.info("未配置多账号，尝试当前客户端登录账号签到（TraeWork / Trae CN）")
         batch_results = []
         results = _silent_append_live([])
 
@@ -273,7 +273,7 @@ def _offline_alert_content(accs: list[dict]) -> tuple[str, str]:
         lines.append("")
     lines += [
         "---", "### 处理步骤", "",
-        "1. 打开对应桌面客户端（TraeWork CN / WorkBuddy）；",
+        "1. 打开对应桌面客户端（TraeWork CN / Trae CN）；",
         "2. 检查登录状态，如已退出请重新登录；",
         "3. 登录成功后保持在线约 10 秒；",
         "4. 打开本助手点「保存当前登录账号」更新凭据，",
@@ -520,7 +520,7 @@ def silent_run() -> int:
 
     results = _silent_run_with_retry(accounts)
     if not results:
-        log.error("未检测到任何已登录平台（TraeWork / WorkBuddy）。")
+        log.error("未检测到任何已登录平台（TraeWork / Trae CN）。")
         return 1
     _silent_record_and_push(results)
     ok_n = sum(1 for r in results if r.get("ok"))

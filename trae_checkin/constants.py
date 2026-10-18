@@ -11,7 +11,7 @@ from typing import Any, Optional
 APP_NAME = "每日签到助手"
 
 
-APP_DISPLAY_NAME = "TraeWork CN / WorkBuddy 每日签到助手"
+APP_DISPLAY_NAME = "TraeWork CN / Trae CN 每日签到助手"
 
 
 APP_COPYRIGHT = "个人开源工具 · 免费使用 · 数据仅存本机"
@@ -29,9 +29,11 @@ PLAT_TRAEWORK = "traework"
 PLAT_WORKBUDDY = "workbuddy"
 
 
+# 客户端已由腾讯 WorkBuddy（CodeBuddy）并入 Trae CN，内部标识 workbuddy
+# 及其历史数据保持不变，仅展示名跟随新客户端名称。
 PLATFORM_LABELS = {
     PLAT_TRAEWORK: "TraeWork",
-    PLAT_WORKBUDDY: "WorkBuddy",
+    PLAT_WORKBUDDY: "Trae CN",
 }
 
 

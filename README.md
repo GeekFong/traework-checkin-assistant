@@ -11,7 +11,7 @@
 [![Issues](https://img.shields.io/github/issues/GeekFong/traework-checkin-assistant?style=flat-square&logo=github&logoColor=white)](https://github.com/GeekFong/traework-checkin-assistant/issues)
 [![Last commit](https://img.shields.io/github/last-commit/GeekFong/traework-checkin-assistant?style=flat-square&color=blue)](https://github.com/GeekFong/traework-checkin-assistant/commits/main)
 
-> TraeWork CN / 腾讯 WorkBuddy 每日自动签到桌面工具。多账号批量签到、结果微信推送、90 天历史统计、掉线预警与健康自检，纯 Python 标准库实现，Windows 10/11 双击即用。
+> TraeWork CN / 腾讯 Trae CN（原 WorkBuddy）每日自动签到桌面工具。多账号批量签到、结果微信推送、90 天历史统计、掉线预警与健康自检，纯 Python 标准库实现，Windows 10/11 双击即用。
 
 项目主页：[GeekFong/traework-checkin-assistant](https://github.com/GeekFong/traework-checkin-assistant) ｜ [下载 Release](https://github.com/GeekFong/traework-checkin-assistant/releases) ｜ [反馈问题](https://github.com/GeekFong/traework-checkin-assistant/issues)
 
@@ -37,7 +37,7 @@
 
 ## 功能特性
 
-- **双平台支持**：同时管理 TraeWork CN（TRAE SOLO CN）与腾讯 WorkBuddy（CodeBuddy 桌面端）账号。
+- **双平台支持**：同时管理 TraeWork CN（TRAE SOLO CN）与腾讯 Trae CN（原 WorkBuddy / CodeBuddy 桌面端，已并入 Trae CN）账号。
 - **多账号批量签到**：登录凭证经 Windows DPAPI 加密保存为本地快照，签到时直接调用官方接口，无需客户端保持登录；账号可随时停用 / 启用、设置备注名。
 - **每日自动签到**：通过 Windows 计划任务在设定时刻静默执行，随机延后 0–5 分钟；关机错过会在开机后自动补跑，同一天重复触发不会重复签到或推送；任务每次触发都会先推送一条「开始签到」通知（每日至多一条，即使当日已全部签到也会发这一条报平安，到点与补签统一覆盖）。
 - **失败自动重试**：网络超时 / DNS / 限流（429）/ 服务端临时错误自动退避重试；批量签到只重试仍失败的账号，登录失效类失败给出一键重登引导。
@@ -64,7 +64,7 @@
 ## 环境要求
 
 - Windows 10 / 11（64 位）
-- 已安装 TraeWork CN 或腾讯 WorkBuddy 客户端，并至少登录过一次
+- 已安装 TraeWork CN 或腾讯 Trae CN（原 WorkBuddy）客户端，并至少登录过一次
 - 普通用户权限即可（无需管理员）
 - 从源码运行需 Python 3.10+（Windows 官方安装包默认包含 tkinter）
 
@@ -104,7 +104,7 @@ python -m trae_checkin --silent
 两个客户端同一时刻只能登录一个账号，本工具通过“凭证快照”实现批量：
 
 1. 在客户端登录账号 A，打开本工具确认状态为“已登录”。
-2. 点击“保存当前 TraeWork / WorkBuddy 账号”，列表出现该账号。
+2. 点击“保存当前 TraeWork / Trae CN 账号”，列表出现该账号。
 3. 在客户端切换登录账号 B，等待自动识别后再次保存。
 4. 点击“全部账号签到”即可对所有已保存账号（两个平台一起）签到。
 
@@ -157,7 +157,7 @@ traework-checkin-assistant/
 │   │   └── state.py           # 弹窗共享上下文 GuiContext
 │   └── platforms/
 │       ├── traework.py        # TraeWork CN 接口适配
-│       └── workbuddy.py       # WorkBuddy 凭证读取与接口适配
+│       └── workbuddy.py       # Trae CN（WorkBuddy）凭证读取与接口适配
 ├── assets/
 │   └── app.ico                # 应用图标
 ├── installer/

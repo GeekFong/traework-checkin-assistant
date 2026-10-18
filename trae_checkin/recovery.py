@@ -150,7 +150,8 @@ def client_process_names(platform: str) -> list[str]:
         if nm not in names:
             names.append(nm)
     if platform == PLAT_WORKBUDDY:
-        for nm in ("workbuddy.exe",):
+        # 客户端已并入 Trae CN（进程名 Trae CN.exe），旧 WorkBuddy.exe 兼容保留。
+        for nm in ("trae cn.exe", "workbuddy.exe"):
             if nm not in names:
                 names.append(nm)
     else:

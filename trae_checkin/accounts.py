@@ -174,8 +174,8 @@ def _save_current_wb_account() -> tuple[bool, str]:
     # 守卫：客户端把凭证改成加密信封等情况会拿不到真实 token，
     # 此时必须中止保存，避免把不可用凭证写进快照、污染账号与历史。
     if not secret_obj.get("token"):
-        return False, ("未能读取到 WorkBuddy 的有效登录凭证"
-                       "（客户端可能已加密存储），请在 WorkBuddy 客户端"
+        return False, ("未能读取到 Trae CN 的有效登录凭证"
+                       "（客户端可能已加密存储），请在 Trae CN 客户端"
                        "重新登录后再保存。")
     record = {
         "platform": PLAT_WORKBUDDY,
@@ -190,5 +190,5 @@ def _save_current_wb_account() -> tuple[bool, str]:
     if isinstance(old, dict) and old.get("note"):
         record["note"] = old["note"]
     existed = _save_account_record(key, record)
-    log.info(f"已{'更新' if existed else '保存'} WorkBuddy 账号快照：{record['display_name']}")
+    log.info(f"已{'更新' if existed else '保存'} Trae CN 账号快照：{record['display_name']}")
     return True, record["display_name"]

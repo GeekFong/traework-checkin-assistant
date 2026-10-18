@@ -114,7 +114,11 @@ def launch_app(exe: Optional[Path] = None) -> bool:
 
 
 def find_wb_install_exes() -> list[Path]:
-    """查找腾讯 WorkBuddy 桌面端可执行文件（含用户机上的 G:\\workb 自定义位置）。"""
+    """查找签到平台桌面端可执行文件。
+
+    客户端已由腾讯 WorkBuddy（CodeBuddy）并入 Trae CN（Trae CN.exe），
+    这里同时探测新旧两种安装形态，兼容尚未升级的机器。
+    """
     cands: list[Path] = []
     for base in (Path(os.environ.get("LOCALAPPDATA", "")),
                  Path(os.environ.get("PROGRAMFILES", "")),
@@ -122,12 +126,15 @@ def find_wb_install_exes() -> list[Path]:
         if not str(base):
             continue
         for pat in ("WorkBuddy*/WorkBuddy.exe",
-                    "Programs/WorkBuddy*/WorkBuddy.exe"):
+                    "Programs/WorkBuddy*/WorkBuddy.exe",
+                    "Trae CN*/Trae CN.exe",
+                    "Programs/Trae CN*/Trae CN.exe"):
             try:
                 cands.extend(p for p in base.glob(pat) if p.is_file())
             except Exception:
                 pass
-    for p in (Path("G:/workb/WorkBuddy/WorkBuddy.exe"),):
+    for p in (Path("D:/Trae CN/Trae CN.exe"),
+              Path("G:/workb/WorkBuddy/WorkBuddy.exe")):
         if p.is_file() and p not in cands:
             cands.append(p)
     return cands

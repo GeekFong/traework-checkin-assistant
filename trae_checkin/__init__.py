@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""TraeWork CN / WorkBuddy 每日签到助手核心包。"""
+"""TraeWork CN / Trae CN 每日签到助手核心包。"""
 
 # 不在这里 import 重子模块，避免 import trae_checkin 产生副作用
 # （如初始化日志 / 解析安装目录）。

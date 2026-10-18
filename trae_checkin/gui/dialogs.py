@@ -39,7 +39,7 @@ def show_about(ctx) -> None:
     tk.Label(box, text=f"版本 v{APP_VERSION}", bg=CARD, fg=PRIMARY,
              font=(FONT, 10, "bold")).pack(anchor="w", padx=20)
     for line in (
-        "支持平台：TraeWork CN / 腾讯 WorkBuddy",
+        "支持平台：TraeWork CN / 腾讯 Trae CN",
         "功能：多账号批量签到 · 推送通知 · 历史统计 · 自动任务",
         "",
         "数据与隐私：",
@@ -114,7 +114,7 @@ def show_disclaimer_dialog(ctx) -> bool:
         "",
         "使用前请知悉并确认：",
         "1. 本工具为个人学习用途的免费开源工具，与 TraeWork、",
-        "    腾讯 WorkBuddy 官方无关；自动化签到可能违反对应平台",
+        "    腾讯 Trae CN 官方无关；自动化签到可能违反对应平台",
         "    的服务条款，账号受限等风险由使用者自行承担。",
         "2. 本工具直接调用平台官方接口完成签到，不经过任何第三方",
         "    服务器；账号凭据使用 Windows DPAPI 加密，仅保存在本机。",
@@ -484,7 +484,7 @@ def show_migration(ctx, on_data_changed=None) -> None:
                                   "绑定旧电脑的当前用户，恢复到新电脑后需重新登录验证，"
                                   "无法直接解密使用。"),
                 _para(content, "请在旧电脑上逐一确认："),
-                _para(content, "1. TraeWork CN、腾讯 WorkBuddy 客户端均可正常打开并已登录；"),
+                _para(content, "1. TraeWork CN、腾讯 Trae CN 客户端均可正常打开并已登录；"),
                 _para(content, "2. 你记得各账号的登录方式（手机号 / 邮箱 / 扫码）；"),
                 _para(content, "3. Server酱 / PushPlus / 企业微信 / 钉钉 的推送密钥可在对应平台重新获取。"),
                 _para(content, "建议先在旧电脑完成一次手动签到，确认账号状态正常后再继续。",
@@ -514,7 +514,7 @@ def show_migration(ctx, on_data_changed=None) -> None:
             "sub": "在新电脑完成安装后恢复数据",
             "render": lambda: (
                 _para(content, "在新电脑上："),
-                _para(content, "1. 安装 TraeWork CN 与腾讯 WorkBuddy 客户端；"),
+                _para(content, "1. 安装 TraeWork CN 与腾讯 Trae CN 客户端；"),
                 _para(content, "2. 把本工具（exe 或源码）放到新电脑，先启动一次；"),
                 _para(content, "3. 把备份压缩包拷到新电脑本地磁盘（U 盘内也可直接选）；"),
                 _para(content, "4. 点击下方按钮选择备份包恢复（当前同名文件会自动另存"

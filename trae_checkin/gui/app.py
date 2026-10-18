@@ -168,7 +168,7 @@ def run_gui() -> int:
     header.pack(fill="x", padx=24, pady=(8, 6))
     tk.Label(header, text=APP_NAME, bg=BG, fg=DARK,
              font=(FONT, 19, "bold")).pack(anchor="w")
-    tk.Label(header, text="TraeWork CN / 腾讯 WorkBuddy · 多账号批量签到 · 推送微信 · 开机补签",
+    tk.Label(header, text="TraeWork CN / 腾讯 Trae CN · 多账号批量签到 · 推送微信 · 开机补签",
              bg=BG, fg=GRAY, font=(FONT, 10)).pack(anchor="w", pady=(2, 0))
 
     # 平台切换
@@ -198,7 +198,7 @@ def run_gui() -> int:
         threading.Thread(target=refresh_ui, daemon=True).start()
 
     plat_buttons = {}
-    for pf, label in ((PLAT_TRAEWORK, "TraeWork CN"), (PLAT_WORKBUDDY, "WorkBuddy")):
+    for pf, label in ((PLAT_TRAEWORK, "TraeWork CN"), (PLAT_WORKBUDDY, "Trae CN")):
         active = pf == platform_var.get()
         b = tk.Radiobutton(
             plat_seg, text=label, variable=platform_var, value=pf,
@@ -305,7 +305,7 @@ def run_gui() -> int:
         pf = platform_var.get()
         if pf == PLAT_WORKBUDDY:
             ok_logged, _ = wb_is_logged_in()
-            label = "WorkBuddy"
+            label = "Trae CN"
         else:
             ok_logged, _ = is_logged_in()
             label = "TraeWork CN"
@@ -325,12 +325,12 @@ def run_gui() -> int:
         if pf == PLAT_WORKBUDDY:
             exes = find_wb_install_exes()
             if not exes:
-                messagebox.showwarning(APP_NAME, "未能自动找到 WorkBuddy，请先安装腾讯 WorkBuddy 桌面端。")
+                messagebox.showwarning(APP_NAME, "未能自动找到 Trae CN，请先安装腾讯 Trae CN 桌面端。")
                 return
             if launch_app(exes[0]):
-                _start_polling("已打开 WorkBuddy，请在窗口中完成登录，登录后此处会自动继续…（最多等待 3 分钟）")
+                _start_polling("已打开 Trae CN，请在窗口中完成登录，登录后此处会自动继续…（最多等待 3 分钟）")
             else:
-                messagebox.showerror(APP_NAME, "无法启动 WorkBuddy，请手动打开后登录。")
+                messagebox.showerror(APP_NAME, "无法启动 Trae CN，请手动打开后登录。")
             return
         exes = find_install_exes()
         chosen: Optional[Path] = exes[0] if exes else None
@@ -344,7 +344,7 @@ def run_gui() -> int:
 
     def on_manual_exe():
         pf = platform_var.get()
-        name = "WorkBuddy" if pf == PLAT_WORKBUDDY else "TraeWork CN"
+        name = "Trae CN" if pf == PLAT_WORKBUDDY else "TraeWork CN"
         path = filedialog.askopenfilename(
             title=f"请选择 {name} 主程序（.exe）",
             filetypes=[("可执行文件", "*.exe"), ("所有文件", "*.*")])
@@ -821,8 +821,8 @@ def run_gui() -> int:
     HINT_BY_PLATFORM = {
         PLAT_TRAEWORK: "TraeWork 客户端同一时间只能登录一个账号。请在客户端登录某账号后，"
                        "点击「保存当前登录账号」；切换账号登录后再次保存，即可收集多个账号。",
-        PLAT_WORKBUDDY: "请先在 WorkBuddy 桌面端登录某账号，再点击「保存当前登录账号」；"
-                        "退出后换另一个账号登录，再次保存即可收集多个 WorkBuddy 账号。",
+        PLAT_WORKBUDDY: "请先在 Trae CN 桌面端登录某账号，再点击「保存当前登录账号」；"
+                        "退出后换另一个账号登录，再次保存即可收集多个 Trae CN 账号。",
     }
 
     def update_accounts_hint():
@@ -873,7 +873,7 @@ def run_gui() -> int:
             guide.pack(fill="x", pady=(2, 6))
             steps = (
                 ("①", "打开客户端并登录",
-                 "启动 TraeWork CN / WorkBuddy 桌面端，完成登录后保持在线约 10 秒"),
+                 "启动 TraeWork CN / Trae CN 桌面端，完成登录后保持在线约 10 秒"),
                 ("②", "保存当前登录账号",
                  "回到本助手点下方「保存当前登录账号」，凭据经 DPAPI 加密保存到本机"),
                 ("③", "配置微信推送（可选）",
@@ -1671,37 +1671,37 @@ def run_gui() -> int:
         auth_file = wb_find_auth_file()
         if not auth_file:
             exes = find_wb_install_exes()
-            login_title.config(text="需要先登录腾讯 WorkBuddy")
+            login_title.config(text="需要先登录腾讯 Trae CN")
             if exes:
-                set_status(STATUS_AMBER, "已安装 WorkBuddy，但尚未登录",
-                           "点击下方按钮打开 WorkBuddy 并登录账号，助手会自动检测登录结果。")
+                set_status(STATUS_AMBER, "已安装 Trae CN，但尚未登录",
+                           "点击下方按钮打开 Trae CN 并登录账号，助手会自动检测登录结果。")
                 login_hint.config(
-                    text="步骤：1) 点击「打开并登录」  2) 在 WorkBuddy 中完成登录  "
+                    text="步骤：1) 点击「打开并登录」  2) 在 Trae CN 中完成登录  "
                          "3) 登录成功后本助手自动继续。\n\n"
                          f"检测到程序：{exes[0].name}")
             else:
-                set_status(STATUS_RED, "未检测到 WorkBuddy 客户端",
-                           "请先下载并安装腾讯 WorkBuddy 桌面端（G:\\workb 或默认安装目录），登录后重新检测。")
-                login_hint.config(text="未能自动定位 WorkBuddy，可先安装客户端，"
-                                       "或点击「手动选择程序位置」指定 WorkBuddy.exe。")
+                set_status(STATUS_RED, "未检测到 Trae CN 客户端",
+                           "请先下载并安装腾讯 Trae CN 桌面端（D:\\Trae CN 或默认安装目录），登录后重新检测。")
+                login_hint.config(text="未能自动定位 Trae CN，可先安装客户端，"
+                                       "或点击「手动选择程序位置」指定 Trae CN.exe。")
             show_only(login_card)
             refresh_task_state()
             return
 
         logged_in, reason = wb_is_logged_in()
         if not logged_in:
-            login_title.config(text="需要先登录腾讯 WorkBuddy")
-            set_status(STATUS_AMBER, "检测到 WorkBuddy，但尚未登录",
-                       "请打开 WorkBuddy 完成登录，登录后点击「重新检测」。")
+            login_title.config(text="需要先登录腾讯 Trae CN")
+            set_status(STATUS_AMBER, "检测到 Trae CN，但尚未登录",
+                       "请打开 Trae CN 完成登录，登录后点击「重新检测」。")
             login_hint.config(
-                text=f"凭证文件：{auth_file}\n点击「打开并登录」启动 WorkBuddy 客户端。")
+                text=f"凭证文件：{auth_file}\n点击「打开并登录」启动 Trae CN 客户端。")
             show_only(login_card)
             refresh_task_state()
             return
 
-        login_title.config(text="需要先登录腾讯 WorkBuddy")
-        set_status(GREEN, "环境正常，已登录 WorkBuddy",
-                   "可在下方立即签到；点击「保存当前 WorkBuddy 账号」可把该账号加入批量签到列表")
+        login_title.config(text="需要先登录腾讯 Trae CN")
+        set_status(GREEN, "环境正常，已登录 Trae CN",
+                   "可在下方立即签到；点击「保存当前 Trae CN 账号」可把该账号加入批量签到列表")
         show_only(action_card)
         result_var.set("正在查询今日签到状态…")
 

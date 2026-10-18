@@ -75,7 +75,7 @@ def _sign_record(record: dict, *, key: str, plat: str, label: str,
 def run_batch_checkin(accounts: Optional[list[dict]] = None,
                       status_only: bool = False) -> list[dict]:
     """
-    对所有已保存的账号快照逐个签到（自动按平台分派 TraeWork / WorkBuddy）。
+    对所有已保存的账号快照逐个签到（自动按平台分派 TraeWork / Trae CN）。
     每个元素返回统一结构的结果（含 platform / username）。
 
     当快照凭证失效且自动续期失败时，会自动读取桌面客户端的实时登录态、
